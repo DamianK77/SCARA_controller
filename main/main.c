@@ -18,6 +18,17 @@
 #define DIR_IO0          GPIO_NUM_4
 #define DIR_IO1          GPIO_NUM_16
 
+#define I2C_MASTER_SDA_IO0   GPIO_NUM_13
+#define I2C_MASTER_SCL_IO0   GPIO_NUM_15
+#define I2C_MASTER_FREQ_HZ  100000
+#define I2C_MASTER_TX_BUF_DISABLE   0                          /*!< I2C master doesn't need buffer */
+#define I2C_MASTER_RX_BUF_DISABLE   0                          /*!< I2C master doesn't need buffer */
+#define I2C_MASTER_NUM0              0                          /*!< I2C master i2c port number, the number of i2c peripheral interfaces available will depend on the chip */
+
+#define I2C_MASTER_NUM1              1                          /*!< I2C master i2c port number, the number of i2c peripheral interfaces available will depend on the chip */
+#define I2C_MASTER_SDA_IO1   GPIO_NUM_2
+#define I2C_MASTER_SCL_IO1   GPIO_NUM_0
+
 #define steps_per_deg_0 13.33
 #define steps_per_deg_1 13.33
 
@@ -33,7 +44,7 @@ static bool IRAM_ATTR timer0_alarm_cb(gptimer_handle_t timer, const gptimer_alar
     BaseType_t high_task_awoken = pdFALSE;
     
     if (step0_state) {
-            step_counts[0] = step_counts[0] - 1;
+        step_counts[0] = step_counts[0] - 1;
     }
 
     if (step_counts[0] <= 0) {
@@ -87,6 +98,23 @@ void move_arm_by_ang(const float (delta_angs)[2], gptimer_handle_t gptimer0, gpt
 
     gptimer_start(gptimer0);
     gptimer_start(gptimer1);
+}
+
+esp_err_t i2c_master_init(int i2c_master_port, int sda_pin, int scl_pin)
+{
+
+    i2c_config_t conf = {
+        .mode = I2C_MODE_MASTER,
+        .sda_io_num = sda_pin,
+        .scl_io_num = scl_pin,
+        .sda_pullup_en = GPIO_PULLUP_ENABLE,
+        .scl_pullup_en = GPIO_PULLUP_ENABLE,
+        .master.clk_speed = I2C_MASTER_FREQ_HZ,
+    };
+
+    i2c_param_config(i2c_master_port, &conf);
+
+    return i2c_driver_install(i2c_master_port, conf.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
 }
 
 void app_main(void)
@@ -143,6 +171,11 @@ void app_main(void)
     };
     gptimer_set_alarm_action(gptimer1, &alarm1_config);
 
+    //---------------CONFIG I2C----------------------------------
+    
+    i2c_master_init(I2C_MASTER_NUM0, I2C_MASTER_SDA_IO0, I2C_MASTER_SCL_IO0);
+    i2c_master_init(I2C_MASTER_NUM1, I2C_MASTER_SDA_IO1, I2C_MASTER_SCL_IO1);
+
     //================PROGRAM=================================
     ESP_LOGI(TAG, "STARTING PROGRAM SECTION");
 
@@ -158,5 +191,13 @@ void app_main(void)
     calculate_invkin(&xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0]);
 
     move_arm_by_ang(delta_angs, gptimer0, gptimer1);
+
+    uint16_t angle = 0;
+
+    while(1) {
+        angle = as_read_angle(I2C_MASTER_NUM0, 0x36);
+        ESP_LOGI(TAG, "ANGLE %i", angle);
+        vTaskDelay(1000/portTICK_PERIOD_MS);
+    }
 
 }
