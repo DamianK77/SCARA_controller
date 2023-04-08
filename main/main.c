@@ -14,9 +14,9 @@
 #include "as5600.h"
 
 #define STEP_IO0         GPIO_NUM_5
-#define STEP_IO1         GPIO_NUM_17
-#define DIR_IO0          GPIO_NUM_4
-#define DIR_IO1          GPIO_NUM_16
+#define STEP_IO1         GPIO_NUM_16
+#define DIR_IO0          GPIO_NUM_17
+#define DIR_IO1          GPIO_NUM_4
 
 #define I2C_MASTER_SDA_IO0   GPIO_NUM_13
 #define I2C_MASTER_SCL_IO0   GPIO_NUM_15
@@ -26,8 +26,8 @@
 #define I2C_MASTER_NUM0              0                          /*!< I2C master i2c port number, the number of i2c peripheral interfaces available will depend on the chip */
 
 #define I2C_MASTER_NUM1              1                          /*!< I2C master i2c port number, the number of i2c peripheral interfaces available will depend on the chip */
-#define I2C_MASTER_SDA_IO1   GPIO_NUM_2
-#define I2C_MASTER_SCL_IO1   GPIO_NUM_0
+#define I2C_MASTER_SDA_IO1   GPIO_NUM_18
+#define I2C_MASTER_SCL_IO1   GPIO_NUM_23
 
 #define steps_per_deg_0 13.33
 #define steps_per_deg_1 13.33
@@ -195,7 +195,7 @@ void app_main(void)
     uint16_t angle = 0;
 
     while(1) {
-        angle = as_read_angle(I2C_MASTER_NUM0, 0x36);
+        angle = as_read_angle(I2C_MASTER_NUM1, 0x36);
         ESP_LOGI(TAG, "ANGLE %i", angle);
         vTaskDelay(1000/portTICK_PERIOD_MS);
     }
