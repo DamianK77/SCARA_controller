@@ -32,6 +32,8 @@
 #define steps_per_deg_0 13.33
 #define steps_per_deg_1 13.33
 
+#define STARTSPEED 3000
+
 volatile uint8_t step0_state = 0;
 volatile uint8_t step1_state = 0;
 volatile uint32_t step_counts[2];
@@ -143,7 +145,7 @@ void app_main(void)
 
     gptimer_alarm_config_t alarm0_config = {
         .reload_count = 0,
-        .alarm_count = 1000,
+        .alarm_count = STARTSPEED,
         .flags.auto_reload_on_alarm = true,
     };
     gptimer_set_alarm_action(gptimer0, &alarm0_config);
@@ -166,7 +168,7 @@ void app_main(void)
 
     gptimer_alarm_config_t alarm1_config = {
         .reload_count = 0,
-        .alarm_count = 1000,
+        .alarm_count = STARTSPEED,
         .flags.auto_reload_on_alarm = true,
     };
     gptimer_set_alarm_action(gptimer1, &alarm1_config);
@@ -182,22 +184,25 @@ void app_main(void)
     gpio_set_level(DIR_IO0, 0);
     gpio_set_level(DIR_IO1, 1);
     
-    float delta_angs[2];
+    float delta_angs[2] = {45, 45};
     float curr_angs[2] = {90, 0};
     float xyz[3] = {0, 200, 0};
     float goal_angs[2] = {0, 0};
 
 
-    calculate_invkin(&xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0]);
+    //calculate_invkin(&xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0]);
 
-    move_arm_by_ang(delta_angs, gptimer0, gptimer1);
+
 
     uint16_t angle = 0;
 
     while(1) {
+        delta_angs[0] = -delta_angs[0];
+        delta_angs[1] = -delta_angs[1];
+        move_arm_by_ang(delta_angs, gptimer0, gptimer1);
         angle = as_read_angle(I2C_MASTER_NUM1, 0x36);
         ESP_LOGI(TAG, "ANGLE %i", angle);
-        vTaskDelay(1000/portTICK_PERIOD_MS);
+        vTaskDelay(4000/portTICK_PERIOD_MS);
     }
 
 }
