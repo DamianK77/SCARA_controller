@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include "inv.h"
 
-// q1 = atan2(y,x) - atan2(L2sin(q2), L1+L2cos(q2))
-// q2 = ±acos((x^2 + y^2 - L1^2 - L2^2)/(2L1L2))
+// q0 = atan2(y,x) - atan2(L2sin(q1), L1+L2cos(q1))
+// q1 = ±acos((x^2 + y^2 - L1^2 - L2^2)/(2L1L2))
 
 // Where:
 // L1 and L2 are the lengths of the first and second arm segments, respectively.

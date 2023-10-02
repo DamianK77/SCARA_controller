@@ -21,5 +21,5 @@
         "inv.h": "c"
     },
     "idf.flashType": "UART",
-    "idf.portWin": "COM3"
+    "idf.portWin": "COM10"
 }

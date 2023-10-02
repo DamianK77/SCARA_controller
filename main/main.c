@@ -14,8 +14,9 @@
 #include "as5600.h"
 
 #define STEP_IO0         GPIO_NUM_5
-#define STEP_IO1         GPIO_NUM_16
 #define DIR_IO0          GPIO_NUM_17
+
+#define STEP_IO1         GPIO_NUM_16
 #define DIR_IO1          GPIO_NUM_4
 
 #define I2C_MASTER_SDA_IO0   GPIO_NUM_13
@@ -29,10 +30,10 @@
 #define I2C_MASTER_SDA_IO1   GPIO_NUM_18
 #define I2C_MASTER_SCL_IO1   GPIO_NUM_23
 
-#define steps_per_deg_0 13.33
-#define steps_per_deg_1 13.33
+#define steps_per_deg_0 26.667  //16x microstep, 3x reduction, 1.8deg motor
+#define steps_per_deg_1 26.667
 
-#define STARTSPEED 3000
+#define STARTSPEED 4000
 
 volatile uint8_t step0_state = 0;
 volatile uint8_t step1_state = 0;
@@ -79,8 +80,9 @@ static bool IRAM_ATTR timer1_alarm_cb(gptimer_handle_t timer, const gptimer_alar
 //============FUNCTIONS=================================
 void move_arm_by_ang(const float (delta_angs)[2], gptimer_handle_t gptimer0, gptimer_handle_t gptimer1) 
 {
+    float delta_angs_1_compensated = delta_angs[1] - delta_angs[0];
     step_counts[0] = abs(delta_angs[0] * steps_per_deg_0);
-    step_counts[1] = abs(delta_angs[1] * steps_per_deg_1);
+    step_counts[1] = abs(delta_angs_1_compensated * steps_per_deg_1);
 
     if (delta_angs[0] < 0)
     {
@@ -89,7 +91,7 @@ void move_arm_by_ang(const float (delta_angs)[2], gptimer_handle_t gptimer0, gpt
         gpio_set_level(DIR_IO0, 0);
     }
 
-    if (delta_angs[1] < 0)
+    if (delta_angs_1_compensated < 0)
     {
         gpio_set_level(DIR_IO1, 1);
     } else {
@@ -184,7 +186,7 @@ void app_main(void)
     gpio_set_level(DIR_IO0, 0);
     gpio_set_level(DIR_IO1, 1);
     
-    float delta_angs[2] = {45, 45};
+    float delta_angs[2] = {45, 1};
     float curr_angs[2] = {90, 0};
     float xyz[3] = {0, 200, 0};
     float goal_angs[2] = {0, 0};
@@ -200,9 +202,7 @@ void app_main(void)
         delta_angs[0] = -delta_angs[0];
         delta_angs[1] = -delta_angs[1];
         move_arm_by_ang(delta_angs, gptimer0, gptimer1);
-        angle = as_read_angle(I2C_MASTER_NUM1, 0x36);
-        ESP_LOGI(TAG, "ANGLE %i", angle);
-        vTaskDelay(4000/portTICK_PERIOD_MS);
+        vTaskDelay(3000/portTICK_PERIOD_MS);
     }
 
 }
