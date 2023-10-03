@@ -61,24 +61,6 @@ static bool IRAM_ATTR timer0_alarm_cb(gptimer_handle_t timer, const gptimer_alar
     return (high_task_awoken == pdTRUE);
 }
 
-static bool IRAM_ATTR timer1_alarm_cb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
-{
-    BaseType_t high_task_awoken = pdFALSE;
-
-    if (step1_state) {
-            step_counts[1] = step_counts[1] - 1;
-    }
-
-    if (step_counts[1] <= 0) {
-        gptimer_stop(timer);
-    }
-
-    step1_state = !step1_state;
-    gpio_set_level(STEP_IO1, step1_state);
-
-    return (high_task_awoken == pdTRUE);
-}
-
 //============FUNCTIONS=================================
 void move_arm_by_ang(const float (delta_angs)[2], gptimer_handle_t gptimer0, gptimer_handle_t gptimer1) 
 {
