@@ -12,6 +12,7 @@
 #include "inv.h"
 #include "driver/i2c.h"
 #include "as5600.h"
+#include "math.h"
 
 #define STEP_IO0         GPIO_NUM_5
 #define DIR_IO0          GPIO_NUM_17
@@ -39,8 +40,9 @@ volatile uint8_t step0_state = 0;
 volatile uint8_t step1_state = 0;
 volatile uint32_t step_counts[2];
 
-
 static const char *TAG = "SCARA";
+
+TaskHandle_t myTaskHandle = NULL;
 
 static bool IRAM_ATTR timer0_alarm_cb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
 {
@@ -81,8 +83,8 @@ static bool IRAM_ATTR timer1_alarm_cb(gptimer_handle_t timer, const gptimer_alar
 void move_arm_by_ang(const float (delta_angs)[2], gptimer_handle_t gptimer0, gptimer_handle_t gptimer1) 
 {
     float delta_angs_1_compensated = delta_angs[1] - delta_angs[0];
-    step_counts[0] = abs(delta_angs[0] * steps_per_deg_0);
-    step_counts[1] = abs(delta_angs_1_compensated * steps_per_deg_1);
+    step_counts[0] = fabs(delta_angs[0] * steps_per_deg_0);
+    step_counts[1] = fabs(delta_angs_1_compensated * steps_per_deg_1);
 
     if (delta_angs[0] < 0)
     {
@@ -188,15 +190,10 @@ void app_main(void)
     
     float delta_angs[2] = {45, 1};
     float curr_angs[2] = {90, 0};
-    float xyz[3] = {0, 200, 0};
+    float goal_xyz[3] = {0, 200, 0};
     float goal_angs[2] = {0, 0};
 
-
-    //calculate_invkin(&xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0]);
-
-
-
-    uint16_t angle = 0;
+    calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0]);
 
     while(1) {
         delta_angs[0] = -delta_angs[0];

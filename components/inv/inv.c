@@ -6,8 +6,6 @@
 
 // Where:
 // L1 and L2 are the lengths of the first and second arm segments, respectively.
-// D1 is the vertical offset of the robot base from the working plane.
-// D2 is the vertical offset of the second joint from the working plane.
 
 //x = L1cos(q0) + L2cos(q0+q1)
 //y = L1sin(q0) + L2sin(q0+q1)
