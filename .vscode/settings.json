@@ -18,8 +18,9 @@
         "stdio.h": "c",
         "gptimer.h": "c",
         "gpio.h": "c",
-        "inv.h": "c"
+        "inv.h": "c",
+        "random": "c"
     },
     "idf.flashType": "UART",
-    "idf.portWin": "COM10"
+    "idf.portWin": "COM9"
 }
