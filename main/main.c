@@ -14,6 +14,7 @@
 #include "as5600.h"
 #include "driver/uart.h"
 #include "math.h"
+#include "string.h"
 
 #define STEP_IO0         GPIO_NUM_27
 #define DIR_IO0          GPIO_NUM_26
@@ -38,8 +39,6 @@ static const int RX_BUF_SIZE = 2048;
 
 #define TXD_PIN1 (GPIO_NUM_4)
 #define RXD_PIN1 (GPIO_NUM_16)
-#define TXD_PIN2 (GPIO_NUM_17)
-#define RXD_PIN2 (GPIO_NUM_5)
 
 static const char *TAG = "SCARA";
 
@@ -74,7 +73,7 @@ static bool IRAM_ATTR timer0_alarm_cb(gptimer_handle_t timer, const gptimer_alar
 //============FUNCTIONS=================================
 void move_arm_by_ang(const float (delta_angs)[2], const float (speeds)[2]) 
 {
-    float delta_angs_compensated[2] = {-1.0*delta_angs[0], delta_angs[1] - delta_angs[0]};
+    float delta_angs_compensated[2] = {delta_angs[0], delta_angs[1] + delta_angs[0]};
     
     ESP_LOGI("MOVE", "comp delta angs %f %f", delta_angs_compensated[0], delta_angs_compensated[1]);
 
@@ -206,14 +205,14 @@ static void rx_task1(void *arg)
 
 static void movement_task(void *arg)
 {
-    float delta_angs[2] = {45, 0};
+    float delta_angs[2] = {0, 0};
     float curr_angs[2] = {90, 0};
     float goal_xyz[3] = {0, 200, 0};
     float goal_angs[2] = {0, 0};
     float speeds[2] = {10, 10};
 
     //=========================================
-        gptimer_handle_t gptimer0 = NULL;
+    gptimer_handle_t gptimer0 = NULL;
     gptimer_config_t timer0_config = {
         .clk_src = GPTIMER_CLK_SRC_DEFAULT,
         .direction = GPTIMER_COUNT_UP,
@@ -238,16 +237,27 @@ static void movement_task(void *arg)
 
     
 
-    //calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0]);
+    calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0]);
+    //calculate_fwdkin(&goal_xyz[0], &goal_angs[0]);
 
     vTaskDelay(5000/portTICK_PERIOD_MS);
     uint8_t z_dir = 0;
 
-    while(1) {
+    //while(1) {
+
+        // char chr[10];
+        // while(1) {
+        //     printf("\nEnter: ");
+        //     scanf("%9s", chr);
+        //     printf("\nEntered: %s\n", chr);
+        //     strcpy(chr, "");
+        //     vTaskDelay(5000/portTICK_PERIOD_MS);
+        // }
+        
         vTaskDelay(1500/portTICK_PERIOD_MS);
 
-        delta_angs[0] = -delta_angs[0];
-        delta_angs[1] = -delta_angs[1];
+        //delta_angs[0] = -delta_angs[0];
+        //delta_angs[1] = -delta_angs[1];
         move_arm_by_ang(delta_angs, speeds);
 
         step0_count = 1000;
@@ -262,7 +272,7 @@ static void movement_task(void *arg)
             vTaskDelay(400/portTICK_PERIOD_MS);
             ESP_LOGI("BLOCK LOOP", "MOT0mov: %i MOT1mov: %i", mot0_moving, mot1_moving);
         }
-    }
+    //}
 }
 
 static void command_receiver() 
