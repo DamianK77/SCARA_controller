@@ -93,7 +93,7 @@ void move_arm_by_ang(const float (delta_angs)[2], const float (speeds)[2])
         uint8_t checksum = (uint8_t)(mot_id + 0xFD + speed + stepbyte[0] + stepbyte[1] + stepbyte[2] + stepbyte[3]);
         char msg_mot[] = {mot_id,0xFD,speed,stepbyte[0],stepbyte[1],stepbyte[2],stepbyte[3],checksum};
         if (steps != 0) {
-            uart_write_bytes(i+1, (const char*) msg_mot, sizeof(msg_mot));
+            uart_write_bytes(UART_NUM_1, (const char*) msg_mot, sizeof(msg_mot));
         }
     } 
 }
@@ -103,7 +103,7 @@ void servo42c_disable() {
         uint8_t mot_id = 224+i;
         uint8_t checksum = (uint8_t)(mot_id + 0xF3 + 0x00);
         char msg_mot[] = {mot_id,0xF3,0x00,checksum};
-        uart_write_bytes(i+1, (const char*) msg_mot, sizeof(msg_mot));
+        uart_write_bytes(UART_NUM_1, (const char*) msg_mot, sizeof(msg_mot));
     }
 }
 
@@ -112,7 +112,7 @@ for (int i = 0; i < 2; i++) {
         uint8_t mot_id = 224+i;
         uint8_t checksum = (uint8_t)(mot_id + 0xF3 + 0x01);
         char msg_mot[] = {mot_id,0xF3,0x01,checksum};
-        uart_write_bytes(i+1, (const char*) msg_mot, sizeof(msg_mot));
+        uart_write_bytes(UART_NUM_1, (const char*) msg_mot, sizeof(msg_mot));
     }
 }
 
@@ -121,7 +121,7 @@ for (int i = 0; i < 2; i++) {
         uint8_t mot_id = 224+i;
         uint8_t checksum = (uint8_t)(mot_id + 0xA4 + 0x00 + 0x01);
         char msg_mot[] = {mot_id,0xA4,0x00,0x01,checksum};
-        uart_write_bytes(i+1, (const char*) msg_mot, sizeof(msg_mot));
+        uart_write_bytes(UART_NUM_1, (const char*) msg_mot, sizeof(msg_mot));
     }
 }
 
@@ -154,11 +154,8 @@ void uart_init(void) {
     };
     // config uart1 and uart2 for motors 0 and 1
     uart_driver_install(UART_NUM_1, RX_BUF_SIZE * 2, 0, 0, NULL, 0);
-    uart_driver_install(UART_NUM_2, RX_BUF_SIZE * 2, 0, 0, NULL, 0);
     uart_param_config(UART_NUM_1, &uart_config);
-    uart_param_config(UART_NUM_2, &uart_config);
     uart_set_pin(UART_NUM_1, TXD_PIN1, RXD_PIN1, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    uart_set_pin(UART_NUM_2, TXD_PIN2, RXD_PIN2, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
 
 }
 
@@ -170,38 +167,35 @@ static void rx_task1(void *arg)
     esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
     uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
     while (1) {
-        const int rxBytes = uart_read_bytes(UART_NUM_1, data, RX_BUF_SIZE, 20 / portTICK_PERIOD_MS);
+        const int rxBytes = uart_read_bytes(UART_NUM_1, data, RX_BUF_SIZE, 10 / portTICK_PERIOD_MS);
         if (rxBytes > 0) {
             data[rxBytes] = 0;
             ESP_LOGI(RX_TASK_TAG, "Read %d bytes", rxBytes);
             ESP_LOG_BUFFER_HEXDUMP(RX_TASK_TAG, data, rxBytes, ESP_LOG_INFO);
-            if (data[1] == 1 && data[2] == 225) {
+            if (data[0] == 224 && data[1] == 1 && data[2] == 225) {
                 ESP_LOGI(RX_TASK_TAG, "MOT0 MOVING");
                 mot0_moving = 1;
-            } else if (data[1] == 2 && data[2] == 226) {
+            } else if (data[0] == 224 && data[1] == 2 && data[2] == 226) {
                 ESP_LOGI(RX_TASK_TAG, "MOT0 END");
                 mot0_moving = 0;
-            }
-        }
-    }
-    free(data);
-}
-
-static void rx_task2(void *arg)
-{
-    static const char *RX_TASK_TAG = "RX_TASK_2";
-    esp_log_level_set(RX_TASK_TAG, ESP_LOG_INFO);
-    uint8_t* data = (uint8_t*) malloc(RX_BUF_SIZE+1);
-    while (1) {
-        const int rxBytes = uart_read_bytes(UART_NUM_2, data, RX_BUF_SIZE, 20 / portTICK_PERIOD_MS);
-        if (rxBytes > 0) {
-            data[rxBytes] = 0;
-            ESP_LOGI(RX_TASK_TAG, "Read %d bytes", rxBytes);
-            ESP_LOG_BUFFER_HEXDUMP(RX_TASK_TAG, data, rxBytes, ESP_LOG_INFO);
-            if (data[1] == 1 && data[2] == 226) {
+            } else if (data[0] == 225 && data[1] == 1 && data[2] == 226) {
                 ESP_LOGI(RX_TASK_TAG, "MOT1 MOVING");
                 mot1_moving = 1;
-            } else if (data[1] == 2 && data[2] == 227) {
+            } else if (data[0] == 225 && data[1] == 2 && data[2] == 227) {
+                ESP_LOGI(RX_TASK_TAG, "MOT1 END");
+                mot1_moving = 0;
+            } 
+
+            if (data[3] == 224 && data[4] == 1 && data[5] == 225) {
+                ESP_LOGI(RX_TASK_TAG, "MOT0 MOVING");
+                mot0_moving = 1;
+            } else if (data[3] == 224 && data[4] == 2 && data[5] == 226) {
+                ESP_LOGI(RX_TASK_TAG, "MOT0 END");
+                mot0_moving = 0;
+            } else if (data[3] == 225 && data[4] == 1 && data[5] == 226) {
+                ESP_LOGI(RX_TASK_TAG, "MOT1 MOVING");
+                mot1_moving = 1;
+            } else if (data[3] == 225 && data[4] == 2 && data[5] == 227) {
                 ESP_LOGI(RX_TASK_TAG, "MOT1 END");
                 mot1_moving = 0;
             }
@@ -212,11 +206,11 @@ static void rx_task2(void *arg)
 
 static void movement_task(void *arg)
 {
-    float delta_angs[2] = {60, 45};
+    float delta_angs[2] = {45, 0};
     float curr_angs[2] = {90, 0};
     float goal_xyz[3] = {0, 200, 0};
     float goal_angs[2] = {0, 0};
-    float speeds[2] = {4, 4};
+    float speeds[2] = {10, 10};
 
     //=========================================
         gptimer_handle_t gptimer0 = NULL;
@@ -301,7 +295,6 @@ void app_main(void)
     //servo42c_set_accel();
 
     xTaskCreate(rx_task1, "uart_rx_task_1", 1024*2, NULL, configMAX_PRIORITIES-1, NULL);
-    xTaskCreate(rx_task2, "uart_rx_task_2", 1024*2, NULL, configMAX_PRIORITIES-2, NULL);
     xTaskCreate(movement_task, "movement_task", 1024*2, NULL, configMAX_PRIORITIES, NULL);
     //servo42c_disable();
 
