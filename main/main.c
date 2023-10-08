@@ -238,41 +238,25 @@ static void movement_task(void *arg)
     
 
     calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0]);
-    //calculate_fwdkin(&goal_xyz[0], &goal_angs[0]);
 
     vTaskDelay(5000/portTICK_PERIOD_MS);
+
     uint8_t z_dir = 0;
 
-    //while(1) {
+    move_arm_by_ang(delta_angs, speeds);
 
-        // char chr[10];
-        // while(1) {
-        //     printf("\nEnter: ");
-        //     scanf("%9s", chr);
-        //     printf("\nEntered: %s\n", chr);
-        //     strcpy(chr, "");
-        //     vTaskDelay(5000/portTICK_PERIOD_MS);
-        // }
-        
-        vTaskDelay(1500/portTICK_PERIOD_MS);
+    step0_count = 1000;
+    gptimer_start(gptimer0);
+    gpio_set_level(DIR_IO0, z_dir);
+    z_dir = !z_dir;
+    motz_moving = 1;
 
-        //delta_angs[0] = -delta_angs[0];
-        //delta_angs[1] = -delta_angs[1];
-        move_arm_by_ang(delta_angs, speeds);
+    vTaskDelay(100/portTICK_PERIOD_MS);
 
-        step0_count = 1000;
-        gptimer_start(gptimer0);
-        gpio_set_level(DIR_IO0, z_dir);
-        z_dir = !z_dir;
-        motz_moving = 1;
-
-        vTaskDelay(100/portTICK_PERIOD_MS);
-
-        while (mot0_moving != 0 || mot1_moving != 0 || motz_moving != 0) {
-            vTaskDelay(400/portTICK_PERIOD_MS);
-            ESP_LOGI("BLOCK LOOP", "MOT0mov: %i MOT1mov: %i", mot0_moving, mot1_moving);
-        }
-    //}
+    while (mot0_moving != 0 || mot1_moving != 0 || motz_moving != 0) {
+        vTaskDelay(400/portTICK_PERIOD_MS);
+        ESP_LOGI("BLOCK LOOP", "MOT0mov: %i MOT1mov: %i", mot0_moving, mot1_moving);
+    }
 }
 
 static void command_receiver() 
