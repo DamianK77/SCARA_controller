@@ -16,8 +16,11 @@
 #include "math.h"
 #include "string.h"
 
-#define STEP_IO0         GPIO_NUM_27
-#define DIR_IO0          GPIO_NUM_26
+#define STEP_IO0         GPIO_NUM_5
+#define DIR_IO0          GPIO_NUM_17
+
+#define STEP_IO1         GPIO_NUM_16
+#define DIR_IO1          GPIO_NUM_4
 
 
 #define I2C_MASTER_SDA_IO0   GPIO_NUM_13
@@ -48,7 +51,8 @@ bool mot0_moving = 0;
 bool mot1_moving = 0;
 bool motz_moving = 0;
 volatile uint8_t step0_state = 0;
-volatile uint32_t step0_count = 0;
+volatile uint8_t step1_state = 0;
+volatile uint32_t step_counts[2];
 
 //===============CALLBACKS============
 
@@ -66,6 +70,60 @@ static bool IRAM_ATTR timer0_alarm_cb(gptimer_handle_t timer, const gptimer_alar
     }
     step0_state = !step0_state;
     gpio_set_level(STEP_IO0, step0_state);
+
+    return (high_task_awoken == pdTRUE);
+}
+
+static bool IRAM_ATTR timer1_alarm_cb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
+{
+    BaseType_t high_task_awoken = pdFALSE;
+    
+    if (step0_state) {
+        step0_count = step0_count - 1;
+    }
+
+    if (step0_count <= 0) {
+        gptimer_stop(timer);
+         motz_moving = 0;
+    }
+    step0_state = !step0_state;
+    gpio_set_level(STEP_IO0, step0_state);
+
+    return (high_task_awoken == pdTRUE);
+}
+
+static bool IRAM_ATTR timer2_alarm_cb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
+{
+    BaseType_t high_task_awoken = pdFALSE;
+    
+    // if (step0_state) {
+    //     step0_count = step0_count - 1;
+    // }
+
+    // if (step0_count <= 0) {
+    //     gptimer_stop(timer);
+    //      motz_moving = 0;
+    // }
+    // step0_state = !step0_state;
+    // gpio_set_level(STEP_IO0, step0_state);
+
+    return (high_task_awoken == pdTRUE);
+}
+
+static bool IRAM_ATTR timer3_alarm_cb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
+{
+    BaseType_t high_task_awoken = pdFALSE;
+    
+    // if (step0_state) {
+    //     step0_count = step0_count - 1;
+    // }
+
+    // if (step0_count <= 0) {
+    //     gptimer_stop(timer);
+    //      motz_moving = 0;
+    // }
+    // step0_state = !step0_state;
+    // gpio_set_level(STEP_IO0, step0_state);
 
     return (high_task_awoken == pdTRUE);
 }
@@ -115,15 +173,6 @@ for (int i = 0; i < 2; i++) {
     }
 }
 
-void servo42c_set_accel() {
-for (int i = 0; i < 2; i++) {
-        uint8_t mot_id = 224+i;
-        uint8_t checksum = (uint8_t)(mot_id + 0xA4 + 0x00 + 0x01);
-        char msg_mot[] = {mot_id,0xA4,0x00,0x01,checksum};
-        uart_write_bytes(UART_NUM_1, (const char*) msg_mot, sizeof(msg_mot));
-    }
-}
-
 
 esp_err_t i2c_master_init(int i2c_master_port, int sda_pin, int scl_pin)
 {
@@ -155,6 +204,55 @@ void uart_init(void) {
     uart_driver_install(UART_NUM_1, RX_BUF_SIZE * 2, 0, 0, NULL, 0);
     uart_param_config(UART_NUM_1, &uart_config);
     uart_set_pin(UART_NUM_1, TXD_PIN1, RXD_PIN1, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+
+}
+
+void timers_init(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle_t gptimer2, gptimer_handle_t gptimer3) {
+
+    gptimer_config_t timer0_config = {
+        .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+        .direction = GPTIMER_COUNT_UP,
+        .resolution_hz = 10000000, // 10MHz, 1 tick=0.1us
+    };
+
+    gptimer_new_timer(&timer0_config, &gptimer0);
+    gptimer_new_timer(&timer0_config, &gptimer1);
+    gptimer_new_timer(&timer0_config, &gptimer2);
+    gptimer_new_timer(&timer0_config, &gptimer3);
+
+    gptimer_event_callbacks_t cbs0 = {
+        .on_alarm = timer0_alarm_cb,
+    };
+    gptimer_event_callbacks_t cbs1 = {
+        .on_alarm = timer1_alarm_cb,
+    };
+    gptimer_event_callbacks_t cbs2 = {
+        .on_alarm = timer2_alarm_cb,
+    };
+    gptimer_event_callbacks_t cbs3 = {
+        .on_alarm = timer3_alarm_cb,
+    };
+
+    gptimer_register_event_callbacks(gptimer0, &cbs0, NULL);
+    gptimer_register_event_callbacks(gptimer1, &cbs1, NULL);
+    gptimer_register_event_callbacks(gptimer2, &cbs2, NULL);
+    gptimer_register_event_callbacks(gptimer3, &cbs3, NULL);
+
+    gptimer_enable(gptimer0);
+    gptimer_enable(gptimer1);
+    gptimer_enable(gptimer2);
+    gptimer_enable(gptimer3);
+
+    gptimer_alarm_config_t alarm0_config = {
+        .reload_count = 0,
+        .alarm_count = STARTSPEED,
+        .flags.auto_reload_on_alarm = true,
+    };
+
+    gptimer_set_alarm_action(gptimer0, &alarm0_config);
+    gptimer_set_alarm_action(gptimer1, &alarm0_config);
+    gptimer_set_alarm_action(gptimer2, &alarm0_config);
+    gptimer_set_alarm_action(gptimer3, &alarm0_config);
 
 }
 
@@ -213,29 +311,12 @@ static void movement_task(void *arg)
 
     //=========================================
     gptimer_handle_t gptimer0 = NULL;
-    gptimer_config_t timer0_config = {
-        .clk_src = GPTIMER_CLK_SRC_DEFAULT,
-        .direction = GPTIMER_COUNT_UP,
-        .resolution_hz = 10000000, // 10MHz, 1 tick=0.1us
-    };
-    gptimer_new_timer(&timer0_config, &gptimer0);
-
-    gptimer_event_callbacks_t cbs0 = {
-        .on_alarm = timer0_alarm_cb,
-    };
-    gptimer_register_event_callbacks(gptimer0, &cbs0, NULL);
-
-    gptimer_enable(gptimer0);
-
-    gptimer_alarm_config_t alarm0_config = {
-        .reload_count = 0,
-        .alarm_count = STARTSPEED,
-        .flags.auto_reload_on_alarm = true,
-    };
-    gptimer_set_alarm_action(gptimer0, &alarm0_config);
+    gptimer_handle_t gptimer1 = NULL;
+    gptimer_handle_t gptimer2 = NULL;
+    gptimer_handle_t gptimer3 = NULL;
     //==============================================
 
-    
+    timers_init(gptimer0, gptimer1, gptimer2, gptimer3);
 
     calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0]);
 
@@ -277,7 +358,7 @@ void app_main(void)
 
     //---------------CONFIG UART---------------------
 
-    uart_init();
+    //uart_init();
 
     //================PROGRAM=================================
     ESP_LOGI(TAG, "STARTING PROGRAM SECTION");
@@ -288,7 +369,7 @@ void app_main(void)
 
     //servo42c_set_accel();
 
-    xTaskCreate(rx_task1, "uart_rx_task_1", 1024*2, NULL, configMAX_PRIORITIES-1, NULL);
+    //xTaskCreate(rx_task1, "uart_rx_task_1", 1024*2, NULL, configMAX_PRIORITIES-1, NULL);
     xTaskCreate(movement_task, "movement_task", 1024*2, NULL, configMAX_PRIORITIES, NULL);
     //servo42c_disable();
 
