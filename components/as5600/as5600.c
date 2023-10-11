@@ -22,7 +22,8 @@ const uint8_t AS5600_CONF_WATCH_DOG     = 0x20;
 //  UNKNOWN REGISTERS 0x09-0x0A
 
 //  OUTPUT REGISTERS
-const uint8_t AS5600_RAW_ANGLE = 0x0C;  // + 0x0D
+const uint8_t AS5600_RAW_ANGLE_MSB = 0x0C;  // + 0x0D
+const uint8_t AS5600_RAW_ANGLE_LSB = 0x0D;
 const uint8_t AS5600_ANGLE_MSB = 0x0E;  // + 0x0F
 const uint8_t AS5600_ANGLE_LSB = 0x0F;
 
@@ -49,6 +50,16 @@ uint16_t as_read_angle(int master_port, int device_addr)
     uint8_t read_buffer_msb;
     i2c_master_write_read_device(master_port, device_addr, &AS5600_ANGLE_LSB, sizeof(AS5600_ANGLE_LSB), &read_buffer_lsb, sizeof(read_buffer_lsb), I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
     i2c_master_write_read_device(master_port, device_addr, &AS5600_ANGLE_MSB, sizeof(AS5600_ANGLE_MSB), &read_buffer_msb, sizeof(read_buffer_msb), I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
+
+    return ((uint16_t)read_buffer_msb << 8) | read_buffer_lsb;
+}
+
+uint16_t as_read_angle_raw(int master_port, int device_addr)
+{
+    uint8_t read_buffer_lsb;
+    uint8_t read_buffer_msb;
+    i2c_master_write_read_device(master_port, device_addr, &AS5600_RAW_ANGLE_LSB, sizeof(AS5600_RAW_ANGLE_LSB), &read_buffer_lsb, sizeof(read_buffer_lsb), I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
+    i2c_master_write_read_device(master_port, device_addr, &AS5600_RAW_ANGLE_MSB, sizeof(AS5600_RAW_ANGLE_MSB), &read_buffer_msb, sizeof(read_buffer_msb), I2C_MASTER_TIMEOUT_MS / portTICK_PERIOD_MS);
 
     return ((uint16_t)read_buffer_msb << 8) | read_buffer_lsb;
 }

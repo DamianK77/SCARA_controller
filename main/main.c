@@ -23,6 +23,8 @@
 #define STEP_IO1         GPIO_NUM_16
 #define DIR_IO1          GPIO_NUM_4
 
+#define MIDANGLE_B       1224
+#define MIDANGLE_OPPOSITE_B 3272    //MIDANGLE_B +- 2048 (must be in range 0-4096)
 
 #define I2C_MASTER_SDA_IO0   GPIO_NUM_13
 #define I2C_MASTER_SCL_IO0   GPIO_NUM_15
@@ -43,6 +45,8 @@ static const int RX_BUF_SIZE = 2048;
 
 #define TXD_PIN1 (GPIO_NUM_4)
 #define RXD_PIN1 (GPIO_NUM_16)
+
+#define MOT0_ENDSTOP_PIN    GPIO_NUM_12
 
 static const char *TAG = "SCARA";
 
@@ -204,23 +208,32 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
     uint16_t angB = as_read_angle(I2C_MASTER_NUM0, 0x36); // value * 0.08789 = angle. 1.8degree*3 = 61
     float delta_angs[2];
     float speeds[2] = {5, 5};
-    while (angB > 3101 || angB < 3099) {
+    while (angB > MIDANGLE_B+1 || angB < MIDANGLE_B-1) {
         angB = as_read_angle(I2C_MASTER_NUM0, 0x36);
-        if (angB > 1052 && angB < 3099) {
-            delta_angs[0] = 0;
-            delta_angs[1] = 0.08;
-        } else {
+        if (angB < MIDANGLE_OPPOSITE_B && angB > MIDANGLE_B-1) {
             delta_angs[0] = 0;
             delta_angs[1] = -0.08;
+        } else {
+            delta_angs[0] = 0;
+            delta_angs[1] = 0.08;
         }
         move_arm_by_ang(delta_angs, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
         while (mot1_moving) {
             vTaskDelay(10/portTICK_PERIOD_MS);
         }
-        ESP_LOGI("HOMING", "IN LOOP, ang: %i", angB);
+        ESP_LOGI("HOMING", "IN LOOP HOMING MOT1, ang: %i", angB);
     } 
 
     //TODO then home motor 0 to 0 degree angle
+    delta_angs[0] = -0.08;
+    delta_angs[1] = 0.08;
+    while (!gpio_get_level(MOT0_ENDSTOP_PIN)) {
+        move_arm_by_ang(delta_angs, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
+        while (mot0_moving) {
+            vTaskDelay(10/portTICK_PERIOD_MS);
+        }
+        ESP_LOGI("HOMING", "IN LOOP HOMING MOT0");
+    }
 
 }
 
@@ -285,15 +298,18 @@ static void movement_task(void *arg)
     gptimer_set_alarm_action(gptimer3, &alarm0_config);
     //==============================================
 
-    calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0]);
 
     vTaskDelay(5000/portTICK_PERIOD_MS);
 
     uint8_t z_dir = 0;
 
     homing(gptimer0, gptimer1, gptimer2, gptimer3);
+    curr_angs[0] = 0.0;
+    curr_angs[1] = 90.0;
 
-    //move_arm_by_ang(delta_angs, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
+    calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0]);
+
+    move_arm_by_ang(delta_angs, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
 
     vTaskDelay(100/portTICK_PERIOD_MS);
 
@@ -327,6 +343,7 @@ void app_main(void)
     gpio_set_direction(DIR_IO1, GPIO_MODE_OUTPUT);
     gpio_set_direction(STEP_IO0, GPIO_MODE_OUTPUT);
     gpio_set_direction(STEP_IO1, GPIO_MODE_OUTPUT);
+    gpio_set_direction(MOT0_ENDSTOP_PIN, GPIO_MODE_INPUT);
 
     //---------------CONFIG I2C----------------------------------
     
@@ -345,8 +362,8 @@ void app_main(void)
     //servo42c_disable();
 
     while(1) {
-        //uint16_t ang1 = as_read_angle(I2C_MASTER_NUM0, 0x36); //0-4096, middle is 3100, opposite of middle is 1052
-        //ESP_LOGI("AS5600", "ANG1: %i", ang1);
+        uint16_t ang1 = as_read_angle(I2C_MASTER_NUM0, 0x36); //0-4096, middle is 3100, opposite of middle is 1052
+        ESP_LOGI("AS5600", "ANG1: %i", ang1);
         vTaskDelay(1000/portTICK_PERIOD_MS);
     }
 
