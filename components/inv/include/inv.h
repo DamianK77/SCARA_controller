@@ -14,5 +14,5 @@
 // D1 is the vertical offset of the robot base from the working plane.
 // D2 is the vertical offset of the second joint from the working plane.
 
-void calculate_invkin(float *xyz, float *goal_angs, float *curr_angs, float *delta_angs);
+void calculate_invkin(float *xyz, float *goal_angs, float *curr_angs, float *delta_angs, int *error);
 void calculate_fwdkin(float *xyz, float *goal_angs);

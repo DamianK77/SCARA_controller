@@ -309,26 +309,16 @@ static void movement_task(void *arg)
 
     vTaskDelay(100/portTICK_PERIOD_MS);
 
-    // while (1) {
-    //     while (mot0_moving != 0 || mot1_moving != 0 || motz_moving != 0) {
-    //         vTaskDelay(400/portTICK_PERIOD_MS);
-    //         ESP_LOGI("BLOCK LOOP", "MOT0mov: %i MOT1mov: %i", mot0_moving, mot1_moving);
-    //     }
-
-    //     ESP_LOGI("BLOCK LOOP", "WAIT END");
-    //     delta_angs[0] = -1.0*delta_angs[0];
-    //     delta_angs[1] = -1.0*delta_angs[1];
-    //     move_arm_by_ang(delta_angs, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
-    // }
-
     vTaskDelay(100/portTICK_PERIOD_MS);
     char chr[10];
     int x = 0;
     int y = 0;
     int z = 0;
-
+    int error = 0;
     //GCODE G28 - home,   G1 Xxxx Yxxx Zxxx
     while(1){
+
+        strcpy(chr, "");
         scanf("%9s", chr);
         
         if (!strcmp(chr, "G28")) {
@@ -359,17 +349,23 @@ static void movement_task(void *arg)
             goal_xyz[1] = y;
             goal_xyz[2] = z;
 
-            calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0]);
+            calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0], &error);
 
-            move_arm_by_ang(delta_angs, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
+            if (error == 0) {
+                move_arm_by_ang(delta_angs, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
 
-            curr_angs[0] = goal_angs[0];
-            curr_angs[1] = goal_angs[1];
-            curr_angs[2] = goal_angs[2];
+                while (mot0_moving != 0 || mot1_moving != 0 || motz_moving != 0) {
+                    vTaskDelay(400/portTICK_PERIOD_MS);
+                    ESP_LOGI("BLOCK LOOP", "MOT0mov: %i MOT1mov: %i", mot0_moving, mot1_moving);
+                }
+
+                curr_angs[0] = goal_angs[0];
+                curr_angs[1] = goal_angs[1];
+                curr_angs[2] = goal_angs[2];
+            }
 
         }
 
-        strcpy(chr, "");
         vTaskDelay(500 / portTICK_PERIOD_MS);
         }
 
