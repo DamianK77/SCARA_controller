@@ -303,13 +303,9 @@ static void movement_task(void *arg)
 
     uint8_t z_dir = 0;
 
-    homing(gptimer0, gptimer1, gptimer2, gptimer3);
-    curr_angs[0] = 0.0;
-    curr_angs[1] = 90.0;
+    //calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0]);
 
-    calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0]);
-
-    move_arm_by_ang(delta_angs, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
+    //move_arm_by_ang(delta_angs, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
 
     vTaskDelay(100/portTICK_PERIOD_MS);
 
@@ -325,14 +321,57 @@ static void movement_task(void *arg)
     //     move_arm_by_ang(delta_angs, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
     // }
 
-    while (1) {
-        vTaskDelay(100/portTICK_PERIOD_MS);
-    }
+    vTaskDelay(100/portTICK_PERIOD_MS);
+    char chr[10];
+    int x = 0;
+    int y = 0;
+    int z = 0;
 
-}
+    //GCODE G28 - home,   G1 Xxxx Yxxx Zxxx
+    while(1){
+        scanf("%9s", chr);
+        
+        if (!strcmp(chr, "G28")) {
+            homing(gptimer0, gptimer1, gptimer2, gptimer3);
+            curr_angs[0] = 0.0;
+            curr_angs[1] = 90.0;
+        }
 
-static void command_receiver() 
-{
+        if(!strcmp(chr, "G1")) {
+            strcpy(chr, "");
+            scanf("%9s", chr);
+            memmove(chr, chr+1, strlen(chr));
+            x = atoi(chr);     
+
+            strcpy(chr, "");
+            scanf("%9s", chr);
+            memmove(chr, chr+1, strlen(chr));
+            y = atoi(chr);
+            
+            strcpy(chr, "");
+            scanf("%9s", chr);
+            memmove(chr, chr+1, strlen(chr));
+            z = atoi(chr);
+
+            printf("Read XYZ: %i %i %i", x, y, z);
+            
+            goal_xyz[0] = x;
+            goal_xyz[1] = y;
+            goal_xyz[2] = z;
+
+            calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0]);
+
+            move_arm_by_ang(delta_angs, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
+
+            curr_angs[0] = goal_angs[0];
+            curr_angs[1] = goal_angs[1];
+            curr_angs[2] = goal_angs[2];
+
+        }
+
+        strcpy(chr, "");
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+        }
 
 }
 
@@ -362,8 +401,8 @@ void app_main(void)
     //servo42c_disable();
 
     while(1) {
-        uint16_t ang1 = as_read_angle(I2C_MASTER_NUM0, 0x36); //0-4096, middle is 3100, opposite of middle is 1052
-        ESP_LOGI("AS5600", "ANG1: %i", ang1);
+        //uint16_t ang1 = as_read_angle(I2C_MASTER_NUM0, 0x36); //0-4096, middle is 3100, opposite of middle is 1052
+        //ESP_LOGI("AS5600", "ANG1: %i", ang1);
         vTaskDelay(1000/portTICK_PERIOD_MS);
     }
 
