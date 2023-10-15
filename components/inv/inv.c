@@ -11,7 +11,7 @@
 //y = L1sin(q0) + L2sin(q0+q1)
 
 
-void calculate_invkin(float *xyz, float *goal_angs, float *curr_angs, float *delta_angs, int *error)
+void calculate_invkin(float *xyz, float *goal_angs, float *curr_angs, float *delta_angs, float *curr_z, float *delta_z, int *error)
 {
     float x = xyz[0];
     float y = xyz[1];
@@ -37,8 +37,10 @@ void calculate_invkin(float *xyz, float *goal_angs, float *curr_angs, float *del
             delta_angs[i] = -1*(curr_angs[i] - goal_angs[i]);
         }
 
-        ESP_LOGI("KINEMATICS", "GOAL POS xyz: %f %f %f ==== calculated goal_angs q1 q2: %f %f", xyz[0], xyz[1], xyz[2], goal_angs[0], goal_angs[1]);
-        ESP_LOGI("KINEMATICS", "ang deltas: %f %f", delta_angs[0], delta_angs[1]);
+        *delta_z = -1*(*curr_z - z);
+
+        ESP_LOGI("KINEMATICS", "GOAL POS xyz: %f %f %f ==== calculated goal_angs q1 q2: %f %f goal z: %f", xyz[0], xyz[1], xyz[2], goal_angs[0], goal_angs[1], z);
+        ESP_LOGI("KINEMATICS", "ang deltas: %f %f z delta: %f", delta_angs[0], delta_angs[1], *delta_z);
     } else {
         ESP_LOGI("KINEMATICS", "ERROR, angle not in range");
         for (uint8_t i = 0; i < 2; i++)

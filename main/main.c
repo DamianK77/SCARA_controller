@@ -23,6 +23,9 @@
 #define STEP_IO1         GPIO_NUM_16
 #define DIR_IO1          GPIO_NUM_4
 
+#define STEP_IO2         GPIO_NUM_23
+#define DIR_IO2          GPIO_NUM_18
+
 #define MIDANGLE_B       1224
 #define MIDANGLE_OPPOSITE_B 3272    //MIDANGLE_B +- 2048 (must be in range 0-4096)
 
@@ -33,18 +36,19 @@
 #define I2C_MASTER_RX_BUF_DISABLE   0                          /*!< I2C master doesn't need buffer */
 #define I2C_MASTER_NUM0              0                          /*!< I2C master i2c port number, the number of i2c peripheral interfaces available will depend on the chip */
 
-#define I2C_MASTER_NUM1              1                          /*!< I2C master i2c port number, the number of i2c peripheral interfaces available will depend on the chip */
-#define I2C_MASTER_SDA_IO1   GPIO_NUM_18
-#define I2C_MASTER_SCL_IO1   GPIO_NUM_23
+// #define I2C_MASTER_NUM1              1                          /*!< I2C master i2c port number, the number of i2c peripheral interfaces available will depend on the chip */
+// #define I2C_MASTER_SDA_IO1   GPIO_NUM_18
+// #define I2C_MASTER_SCL_IO1   GPIO_NUM_23
 
 #define STEPS_PER_DEG_01 106.66667  //64x microstep, 3x reduction, 1.8deg motor
+#define STEPS_PER_MM_Z 203.68 //steps per mm for 0,9deg motor. 10mm pulley length = 31.42mm/rotation, 400steps/rotation gives 12.73 steps/mm, 203.68 for 16x microstep 
 
 #define STARTSPEED 1000
 
-static const int RX_BUF_SIZE = 2048;
+//static const int RX_BUF_SIZE = 2048;
 
-#define TXD_PIN1 (GPIO_NUM_4)
-#define RXD_PIN1 (GPIO_NUM_16)
+//#define TXD_PIN1 (GPIO_NUM_4)
+//#define RXD_PIN1 (GPIO_NUM_16)
 
 #define MOT0_ENDSTOP_PIN    GPIO_NUM_12
 
@@ -57,8 +61,12 @@ bool mot1_moving = 0;
 bool motz_moving = 0;
 volatile uint8_t step0_state = 0;
 volatile uint8_t step1_state = 0;
-volatile uint32_t step_counts[2];
-
+volatile uint8_t step2_state = 0;
+volatile uint32_t step_counts[3] = {0,0,0};
+gptimer_handle_t gptimer0 = NULL;
+gptimer_handle_t gptimer1 = NULL;
+gptimer_handle_t gptimer2 = NULL;
+gptimer_handle_t gptimer3 = NULL;
 //===============CALLBACKS============
 
 static bool IRAM_ATTR timer0_alarm_cb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
@@ -102,16 +110,16 @@ static bool IRAM_ATTR timer2_alarm_cb(gptimer_handle_t timer, const gptimer_alar
 {
     BaseType_t high_task_awoken = pdFALSE;
     
-    // if (step0_state) {
-    //     step0_count = step0_count - 1;
-    // }
+    if (step2_state) {
+        step_counts[2] = step_counts[2] - 1;
+    }
 
-    // if (step0_count <= 0) {
-    //     gptimer_stop(timer);
-    //      motz_moving = 0;
-    // }
-    // step0_state = !step0_state;
-    // gpio_set_level(STEP_IO0, step0_state);
+    if (step_counts[2] <= 0) {
+        gptimer_stop(timer);
+        motz_moving = 0;
+    }
+    step2_state = !step2_state;
+    gpio_set_level(STEP_IO2, step2_state);
 
     return (high_task_awoken == pdTRUE);
 }
@@ -135,7 +143,7 @@ static bool IRAM_ATTR timer3_alarm_cb(gptimer_handle_t timer, const gptimer_alar
 }
 
 //============FUNCTIONS=================================
-void move_arm_by_ang(const float (delta_angs)[2], const float (speeds)[2], gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle_t gptimer2, gptimer_handle_t gptimer3) 
+void move_arm_by_ang(const float (delta_angs)[2], float delta_z, const float (speeds)[2], gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle_t gptimer2, gptimer_handle_t gptimer3) 
 {
     float delta_angs_compensated[2] = {delta_angs[0], delta_angs[1] + delta_angs[0]};
     
@@ -155,17 +163,28 @@ void move_arm_by_ang(const float (delta_angs)[2], const float (speeds)[2], gptim
         gpio_set_level(DIR_IO1, 0);
     }
 
+    if (delta_z < 0)
+    {
+        gpio_set_level(DIR_IO2, 1);
+    } else {
+        gpio_set_level(DIR_IO2, 0);
+    }
+
     step_counts[0] = fabs(delta_angs_compensated[0] * STEPS_PER_DEG_01);
     step_counts[1] = fabs(delta_angs_compensated[1] * STEPS_PER_DEG_01);
-
-    mot0_moving = 1;
-    mot1_moving = 1;
+    step_counts[2] = fabs(delta_z*STEPS_PER_MM_Z);
     
     if (step_counts[0] != 0) {
+        mot0_moving = 1;
         gptimer_start(gptimer0);
     }
     if (step_counts[1] != 0) {
+        mot1_moving = 1;
         gptimer_start(gptimer1);
+    }
+    if (step_counts[2] != 0) {
+       motz_moving = 1;
+       gptimer_start(gptimer2);
     }
 
 }
@@ -187,26 +206,11 @@ esp_err_t i2c_master_init(int i2c_master_port, int sda_pin, int scl_pin)
     return i2c_driver_install(i2c_master_port, conf.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
 }
 
-void uart_init(void) {
-    const uart_config_t uart_config = {
-        .baud_rate = 38400,
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-        .source_clk = UART_SCLK_DEFAULT,
-    };
-    // config uart1 and uart2 for motors 0 and 1
-    uart_driver_install(UART_NUM_1, RX_BUF_SIZE * 2, 0, 0, NULL, 0);
-    uart_param_config(UART_NUM_1, &uart_config);
-    uart_set_pin(UART_NUM_1, TXD_PIN1, RXD_PIN1, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-
-}
-
 void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle_t gptimer2, gptimer_handle_t gptimer3) {
     //first, position arm B along Y axis
     uint16_t angB = as_read_angle(I2C_MASTER_NUM0, 0x36); // value * 0.08789 = angle. 1.8degree*3 = 61
     float delta_angs[2];
+    float delta_z = 0;
     float speeds[2] = {5, 5};
     while (angB > MIDANGLE_B+1 || angB < MIDANGLE_B-1) {
         angB = as_read_angle(I2C_MASTER_NUM0, 0x36);
@@ -217,7 +221,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
             delta_angs[0] = 0;
             delta_angs[1] = 0.08;
         }
-        move_arm_by_ang(delta_angs, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
+        move_arm_by_ang(delta_angs, delta_z, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
         while (mot1_moving) {
             vTaskDelay(10/portTICK_PERIOD_MS);
         }
@@ -228,7 +232,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
     delta_angs[0] = -0.08;
     delta_angs[1] = 0.08;
     while (!gpio_get_level(MOT0_ENDSTOP_PIN)) {
-        move_arm_by_ang(delta_angs, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
+        move_arm_by_ang(delta_angs, delta_z, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
         while (mot0_moving) {
             vTaskDelay(10/portTICK_PERIOD_MS);
         }
@@ -242,15 +246,13 @@ static void movement_task(void *arg)
 {
     float delta_angs[2] = {0, 0};
     float curr_angs[2] = {90, 0};
+    float delta_z = 0;
+    float curr_z = 0;
     float goal_xyz[3] = {0, 200, 0};
     float goal_angs[2] = {0, 0};
     float speeds[2] = {10, 10};
 
     //=========================================
-    gptimer_handle_t gptimer0 = NULL;
-    gptimer_handle_t gptimer1 = NULL;
-    gptimer_handle_t gptimer2 = NULL;
-    gptimer_handle_t gptimer3 = NULL;
 
     gptimer_config_t timer0_config = {
         .clk_src = GPTIMER_CLK_SRC_DEFAULT,
@@ -298,23 +300,14 @@ static void movement_task(void *arg)
     gptimer_set_alarm_action(gptimer3, &alarm0_config);
     //==============================================
 
-
     vTaskDelay(5000/portTICK_PERIOD_MS);
 
-    uint8_t z_dir = 0;
-
-    //calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0]);
-
-    //move_arm_by_ang(delta_angs, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
-
-    vTaskDelay(100/portTICK_PERIOD_MS);
-
-    vTaskDelay(100/portTICK_PERIOD_MS);
     char chr[10];
     int x = 0;
     int y = 0;
     int z = 0;
     int error = 0;
+
     //GCODE G28 - home,   G1 Xxxx Yxxx Zxxx
     while(1){
 
@@ -349,25 +342,27 @@ static void movement_task(void *arg)
             goal_xyz[1] = y;
             goal_xyz[2] = z;
 
-            calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0], &error);
+            calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0], &curr_z, &delta_z ,&error);
 
             if (error == 0) {
-                move_arm_by_ang(delta_angs, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
+                move_arm_by_ang(delta_angs, delta_z, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
 
                 while (mot0_moving != 0 || mot1_moving != 0 || motz_moving != 0) {
                     vTaskDelay(400/portTICK_PERIOD_MS);
-                    ESP_LOGI("BLOCK LOOP", "MOT0mov: %i MOT1mov: %i", mot0_moving, mot1_moving);
+                    ESP_LOGI("BLOCK LOOP", "MOT0mov: %i MOT1mov: %i, MOTzmov: %i", mot0_moving, mot1_moving, motz_moving);
                 }
 
                 curr_angs[0] = goal_angs[0];
                 curr_angs[1] = goal_angs[1];
                 curr_angs[2] = goal_angs[2];
+                curr_z = goal_xyz[2];
             }
 
         }
 
         vTaskDelay(500 / portTICK_PERIOD_MS);
-        }
+    }
+
 
 }
 
@@ -378,12 +373,14 @@ void app_main(void)
     gpio_set_direction(DIR_IO1, GPIO_MODE_OUTPUT);
     gpio_set_direction(STEP_IO0, GPIO_MODE_OUTPUT);
     gpio_set_direction(STEP_IO1, GPIO_MODE_OUTPUT);
+    gpio_set_direction(STEP_IO2, GPIO_MODE_OUTPUT);
+    gpio_set_direction(DIR_IO2, GPIO_MODE_OUTPUT);
     gpio_set_direction(MOT0_ENDSTOP_PIN, GPIO_MODE_INPUT);
 
     //---------------CONFIG I2C----------------------------------
     
     i2c_master_init(I2C_MASTER_NUM0, I2C_MASTER_SDA_IO0, I2C_MASTER_SCL_IO0);
-    i2c_master_init(I2C_MASTER_NUM1, I2C_MASTER_SDA_IO1, I2C_MASTER_SCL_IO1);
+    //i2c_master_init(I2C_MASTER_NUM1, I2C_MASTER_SDA_IO1, I2C_MASTER_SCL_IO1);
 
     //---------------CONFIG UART---------------------
 
