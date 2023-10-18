@@ -173,6 +173,7 @@ void move_arm_by_ang(const float (delta_angs)[2], float delta_z, const float (sp
         gpio_set_level(DIR_IO2, 0);
     }
 
+    //config speeds
     gptimer_alarm_config_t alarm0_config = {
         .alarm_count = (int)(1.0/(2.0*STEPS_PER_DEG_01*speeds[0]*(1.0/STEPCLOCK_FREQ))), 
         .flags.auto_reload_on_alarm = true,
@@ -186,6 +187,13 @@ void move_arm_by_ang(const float (delta_angs)[2], float delta_z, const float (sp
         .reload_count = 0,
     };
     gptimer_set_alarm_action(gptimer1, &alarm1_config);
+
+    gptimer_alarm_config_t alarm2_config = {
+        .alarm_count = (int)(1.0/(2.0*STEPS_PER_MM_Z*speeds[2]*(1.0/STEPCLOCK_FREQ))),
+        .flags.auto_reload_on_alarm = true,
+        .reload_count = 0,
+    };
+    gptimer_set_alarm_action(gptimer2, &alarm2_config);
 
     step_counts[0] = fabs(delta_angs_compensated[0] * STEPS_PER_DEG_01);
     step_counts[1] = fabs(delta_angs_compensated[1] * STEPS_PER_DEG_01);
@@ -282,7 +290,7 @@ static void movement_task(void *arg)
     float curr_z = 0;
     float goal_xyz[3] = {0, 200, 0};
     float goal_angs[2] = {0, 0};
-    float speeds[3] = {30, 30, 10};
+    float speeds[3] = {30, 30, 40};
 
     //=========================================
 
@@ -384,7 +392,7 @@ static void movement_task(void *arg)
 
             calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0], &curr_z, &delta_z ,&error);
 
-            if (error == 0 && homed == 1) {
+            if (error == 0 && homed == 1 && speed > 0 && speed < 201) {
                 move_arm_by_ang(delta_angs, delta_z, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
 
                 while (mot0_moving != 0 || mot1_moving != 0 || motz_moving != 0) {
