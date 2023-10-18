@@ -26,8 +26,8 @@
 #define STEP_IO2         GPIO_NUM_23
 #define DIR_IO2          GPIO_NUM_18
 
-#define MIDANGLE_B       1224
-#define MIDANGLE_OPPOSITE_B 3272    //MIDANGLE_B +- 2048 (must be in range 0-4096)
+#define MIDANGLE_B       1892
+#define MIDANGLE_OPPOSITE_B 3940    //MIDANGLE_B +- 2048 (must be in range 0-4096)
 
 #define I2C_MASTER_SDA_IO0   GPIO_NUM_13
 #define I2C_MASTER_SCL_IO0   GPIO_NUM_15
@@ -51,6 +51,7 @@
 //#define RXD_PIN1 (GPIO_NUM_16)
 
 #define MOT0_ENDSTOP_PIN    GPIO_NUM_12
+#define MOT2_ENDSTOP_PIN    GPIO_NUM_14
 
 static const char *TAG = "SCARA";
 
@@ -59,6 +60,7 @@ static const char *TAG = "SCARA";
 bool mot0_moving = 0;
 bool mot1_moving = 0;
 bool motz_moving = 0;
+bool homed = 0;
 volatile uint8_t step0_state = 0;
 volatile uint8_t step1_state = 0;
 volatile uint8_t step2_state = 0;
@@ -143,7 +145,7 @@ static bool IRAM_ATTR timer3_alarm_cb(gptimer_handle_t timer, const gptimer_alar
 }
 
 //============FUNCTIONS=================================
-void move_arm_by_ang(const float (delta_angs)[2], float delta_z, const float (speeds)[2], gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle_t gptimer2, gptimer_handle_t gptimer3) 
+void move_arm_by_ang(const float (delta_angs)[2], float delta_z, const float (speeds)[3], gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle_t gptimer2, gptimer_handle_t gptimer3) 
 {
     float delta_angs_compensated[2] = {delta_angs[0], delta_angs[1] + delta_angs[0]};
     
@@ -207,11 +209,25 @@ esp_err_t i2c_master_init(int i2c_master_port, int sda_pin, int scl_pin)
 }
 
 void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle_t gptimer2, gptimer_handle_t gptimer3) {
-    //first, position arm B along Y axis
     uint16_t angB = as_read_angle(I2C_MASTER_NUM0, 0x36); // value * 0.08789 = angle. 1.8degree*3 = 61
     float delta_angs[2];
     float delta_z = 0;
-    float speeds[2] = {5, 5};
+    float speeds[3] = {5, 5, 5};
+
+    //home motor z to 0 position
+    delta_angs[0] = 0.00;
+    delta_angs[1] = 0.00;
+    delta_z = -0.5;
+    while (!gpio_get_level(MOT2_ENDSTOP_PIN)) {
+        move_arm_by_ang(delta_angs, delta_z, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
+        while (motz_moving) {
+            vTaskDelay(10/portTICK_PERIOD_MS);
+        }
+        ESP_LOGI("HOMING", "IN LOOP HOMING MOT2");
+    }
+
+    delta_z = 0;
+    //then home motor 1 position arm B along Y axis
     while (angB > MIDANGLE_B+1 || angB < MIDANGLE_B-1) {
         angB = as_read_angle(I2C_MASTER_NUM0, 0x36);
         if (angB < MIDANGLE_OPPOSITE_B && angB > MIDANGLE_B-1) {
@@ -239,6 +255,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
         ESP_LOGI("HOMING", "IN LOOP HOMING MOT0");
     }
 
+    homed = 1;
 }
 
 //===================TASKS====================
@@ -250,7 +267,7 @@ static void movement_task(void *arg)
     float curr_z = 0;
     float goal_xyz[3] = {0, 200, 0};
     float goal_angs[2] = {0, 0};
-    float speeds[2] = {10, 10};
+    float speeds[3] = {10, 10, 10};
 
     //=========================================
 
@@ -344,7 +361,7 @@ static void movement_task(void *arg)
 
             calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0], &curr_z, &delta_z ,&error);
 
-            if (error == 0) {
+            if (error == 0 && homed == 1) {
                 move_arm_by_ang(delta_angs, delta_z, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
 
                 while (mot0_moving != 0 || mot1_moving != 0 || motz_moving != 0) {
@@ -356,7 +373,7 @@ static void movement_task(void *arg)
                 curr_angs[1] = goal_angs[1];
                 curr_angs[2] = goal_angs[2];
                 curr_z = goal_xyz[2];
-            }
+            } 
 
         }
 
@@ -376,6 +393,7 @@ void app_main(void)
     gpio_set_direction(STEP_IO2, GPIO_MODE_OUTPUT);
     gpio_set_direction(DIR_IO2, GPIO_MODE_OUTPUT);
     gpio_set_direction(MOT0_ENDSTOP_PIN, GPIO_MODE_INPUT);
+    gpio_set_direction(MOT2_ENDSTOP_PIN, GPIO_MODE_INPUT);
 
     //---------------CONFIG I2C----------------------------------
     
@@ -394,8 +412,8 @@ void app_main(void)
     //servo42c_disable();
 
     while(1) {
-        //uint16_t ang1 = as_read_angle(I2C_MASTER_NUM0, 0x36); //0-4096, middle is 3100, opposite of middle is 1052
-        //ESP_LOGI("AS5600", "ANG1: %i", ang1);
+        uint16_t ang1 = as_read_angle(I2C_MASTER_NUM0, 0x36); //0-4096, middle is 3100, opposite of middle is 1052
+        ESP_LOGI("AS5600", "ANG1: %i", ang1);
         vTaskDelay(1000/portTICK_PERIOD_MS);
     }
 

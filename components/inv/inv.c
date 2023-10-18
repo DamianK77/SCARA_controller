@@ -26,8 +26,10 @@ void calculate_invkin(float *xyz, float *goal_angs, float *curr_angs, float *del
     goal_angs[0] = q0*RAD2DEG;
     goal_angs[1] = q1*RAD2DEG;
 
+    *delta_z = -1*(*curr_z - z);
+
     *error = 0;
-    if (goal_angs[0] > 180 || goal_angs[0] < 0 || goal_angs[1] < -140 || goal_angs[1] > 140) {
+    if (goal_angs[0] > 180 || goal_angs[0] < 0 || goal_angs[1] < -140 || goal_angs[1] > 140 || z < 0 || y < 0 || y > L1+L2 || x > L1+L2 || x < -1*(L1+L2)) {
         *error = 1;
     }
 
@@ -37,7 +39,7 @@ void calculate_invkin(float *xyz, float *goal_angs, float *curr_angs, float *del
             delta_angs[i] = -1*(curr_angs[i] - goal_angs[i]);
         }
 
-        *delta_z = -1*(*curr_z - z);
+        
 
         ESP_LOGI("KINEMATICS", "GOAL POS xyz: %f %f %f ==== calculated goal_angs q1 q2: %f %f goal z: %f", xyz[0], xyz[1], xyz[2], goal_angs[0], goal_angs[1], z);
         ESP_LOGI("KINEMATICS", "ang deltas: %f %f z delta: %f", delta_angs[0], delta_angs[1], *delta_z);
