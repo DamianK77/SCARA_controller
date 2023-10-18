@@ -26,8 +26,8 @@
 #define STEP_IO2         GPIO_NUM_23
 #define DIR_IO2          GPIO_NUM_18
 
-#define MIDANGLE_B       1892
-#define MIDANGLE_OPPOSITE_B 3940    //MIDANGLE_B +- 2048 (must be in range 0-4096)
+#define MIDANGLE_B       1946
+#define MIDANGLE_OPPOSITE_B 3994    //MIDANGLE_B +- 2048 (must be in range 0-4096)
 
 #define I2C_MASTER_SDA_IO0   GPIO_NUM_13
 #define I2C_MASTER_SCL_IO0   GPIO_NUM_15
@@ -150,7 +150,7 @@ void move_arm_by_ang(const float (delta_angs)[2], float delta_z, const float (sp
 {
     float delta_angs_compensated[2] = {delta_angs[0], delta_angs[1] + delta_angs[0]};
     
-    ESP_LOGI("MOVE", "comp delta angs %f %f", delta_angs_compensated[0], delta_angs_compensated[1]);
+    //ESP_LOGI("MOVE", "comp delta angs %f %f", delta_angs_compensated[0], delta_angs_compensated[1]);
 
     if (delta_angs_compensated[0] < 0)
     {
@@ -173,14 +173,12 @@ void move_arm_by_ang(const float (delta_angs)[2], float delta_z, const float (sp
         gpio_set_level(DIR_IO2, 0);
     }
 
-    ESP_LOGI("DEBUG", "configuring alarm0");
     gptimer_alarm_config_t alarm0_config = {
         .alarm_count = (int)(1.0/(2.0*STEPS_PER_DEG_01*speeds[0]*(1.0/STEPCLOCK_FREQ))), 
         .flags.auto_reload_on_alarm = true,
         .reload_count = 0,
     };
     gptimer_set_alarm_action(gptimer0, &alarm0_config);
-    ESP_LOGI("DEBUG", "configured alarm0");
 
     gptimer_alarm_config_t alarm1_config = {
         .alarm_count = (int)(1.0/(2.0*STEPS_PER_DEG_01*speeds[1]*(1.0/STEPCLOCK_FREQ))),
@@ -188,7 +186,6 @@ void move_arm_by_ang(const float (delta_angs)[2], float delta_z, const float (sp
         .reload_count = 0,
     };
     gptimer_set_alarm_action(gptimer1, &alarm1_config);
-    ESP_LOGI("DEBUG", "configured alarm1");
 
     step_counts[0] = fabs(delta_angs_compensated[0] * STEPS_PER_DEG_01);
     step_counts[1] = fabs(delta_angs_compensated[1] * STEPS_PER_DEG_01);
@@ -230,7 +227,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
     uint16_t angB = as_read_angle(I2C_MASTER_NUM0, 0x36); // value * 0.08789 = angle. 1.8degree*3 = 61
     float delta_angs[2];
     float delta_z = 0;
-    float speeds[3] = {5, 5, 5};
+    float speeds[3] = {25, 25, 5};
 
     //home motor z to 0 position
     delta_angs[0] = 0.00;
@@ -241,7 +238,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
         while (motz_moving) {
             vTaskDelay(10/portTICK_PERIOD_MS);
         }
-        ESP_LOGI("HOMING", "IN LOOP HOMING MOT2");
+        //ESP_LOGI("HOMING", "IN LOOP HOMING MOT2");
     }
 
     delta_z = 0;
@@ -259,7 +256,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
         while (mot1_moving) {
             vTaskDelay(10/portTICK_PERIOD_MS);
         }
-        ESP_LOGI("HOMING", "IN LOOP HOMING MOT1, ang: %i", angB);
+        //ESP_LOGI("HOMING", "IN LOOP HOMING MOT1, ang: %i", angB);
     } 
 
     //TODO then home motor 0 to 0 degree angle
@@ -270,7 +267,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
         while (mot0_moving) {
             vTaskDelay(10/portTICK_PERIOD_MS);
         }
-        ESP_LOGI("HOMING", "IN LOOP HOMING MOT0");
+        //ESP_LOGI("HOMING", "IN LOOP HOMING MOT0");
     }
 
     homed = 1;
@@ -285,7 +282,7 @@ static void movement_task(void *arg)
     float curr_z = 0;
     float goal_xyz[3] = {0, 200, 0};
     float goal_angs[2] = {0, 0};
-    float speeds[3] = {10, 10, 10};
+    float speeds[3] = {30, 30, 10};
 
     //=========================================
 
@@ -341,6 +338,7 @@ static void movement_task(void *arg)
     int x = 0;
     int y = 0;
     int z = 0;
+    int speed = 0;
     int error = 0;
 
     //GCODE G28 - home,   G1 Xxxx Yxxx Zxxx
@@ -371,11 +369,18 @@ static void movement_task(void *arg)
             memmove(chr, chr+1, strlen(chr));
             z = atoi(chr);
 
-            printf("Read XYZ: %i %i %i", x, y, z);
+            strcpy(chr, "");
+            scanf("%9s", chr);
+            memmove(chr, chr+1, strlen(chr));
+            speed = atoi(chr);
+
+            printf("Read XYZ speed: %i %i %i %i", x, y, z, speed);
             
             goal_xyz[0] = x;
             goal_xyz[1] = y;
             goal_xyz[2] = z;
+            speeds[0] = speed;
+            speeds[1] = speed;
 
             calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0], &curr_z, &delta_z ,&error);
 
@@ -426,7 +431,7 @@ void app_main(void)
     ESP_LOGI(TAG, "STARTING PROGRAM SECTION");
 
     //xTaskCreate(rx_task1, "uart_rx_task_1", 1024*2, NULL, configMAX_PRIORITIES-1, NULL);
-    xTaskCreate(movement_task, "movement_task", 2048*2, NULL, configMAX_PRIORITIES, NULL);
+    xTaskCreate(movement_task, "movement_task", 4096*2, NULL, configMAX_PRIORITIES, NULL);
     //servo42c_disable();
 
     while(1) {
