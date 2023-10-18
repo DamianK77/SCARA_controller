@@ -43,6 +43,7 @@
 #define STEPS_PER_DEG_01 106.66667  //64x microstep, 3x reduction, 1.8deg motor
 #define STEPS_PER_MM_Z 203.68 //steps per mm for 0,9deg motor. 10mm pulley length = 31.42mm/rotation, 400steps/rotation gives 12.73 steps/mm, 203.68 for 16x microstep 
 
+#define STEPCLOCK_FREQ 10000000
 #define STARTSPEED 1000
 
 //static const int RX_BUF_SIZE = 2048;
@@ -172,6 +173,23 @@ void move_arm_by_ang(const float (delta_angs)[2], float delta_z, const float (sp
         gpio_set_level(DIR_IO2, 0);
     }
 
+    ESP_LOGI("DEBUG", "configuring alarm0");
+    gptimer_alarm_config_t alarm0_config = {
+        .alarm_count = (int)(1.0/(2.0*STEPS_PER_DEG_01*speeds[0]*(1.0/STEPCLOCK_FREQ))), 
+        .flags.auto_reload_on_alarm = true,
+        .reload_count = 0,
+    };
+    gptimer_set_alarm_action(gptimer0, &alarm0_config);
+    ESP_LOGI("DEBUG", "configured alarm0");
+
+    gptimer_alarm_config_t alarm1_config = {
+        .alarm_count = (int)(1.0/(2.0*STEPS_PER_DEG_01*speeds[1]*(1.0/STEPCLOCK_FREQ))),
+        .flags.auto_reload_on_alarm = true,
+        .reload_count = 0,
+    };
+    gptimer_set_alarm_action(gptimer1, &alarm1_config);
+    ESP_LOGI("DEBUG", "configured alarm1");
+
     step_counts[0] = fabs(delta_angs_compensated[0] * STEPS_PER_DEG_01);
     step_counts[1] = fabs(delta_angs_compensated[1] * STEPS_PER_DEG_01);
     step_counts[2] = fabs(delta_z*STEPS_PER_MM_Z);
@@ -274,7 +292,7 @@ static void movement_task(void *arg)
     gptimer_config_t timer0_config = {
         .clk_src = GPTIMER_CLK_SRC_DEFAULT,
         .direction = GPTIMER_COUNT_UP,
-        .resolution_hz = 10000000, // 10MHz, 1 tick=0.1us
+        .resolution_hz = STEPCLOCK_FREQ, // 10MHz, 1 tick=0.1us
     };
 
     gptimer_new_timer(&timer0_config, &gptimer0);
@@ -408,7 +426,7 @@ void app_main(void)
     ESP_LOGI(TAG, "STARTING PROGRAM SECTION");
 
     //xTaskCreate(rx_task1, "uart_rx_task_1", 1024*2, NULL, configMAX_PRIORITIES-1, NULL);
-    xTaskCreate(movement_task, "movement_task", 1024*2, NULL, configMAX_PRIORITIES, NULL);
+    xTaskCreate(movement_task, "movement_task", 2048*2, NULL, configMAX_PRIORITIES, NULL);
     //servo42c_disable();
 
     while(1) {
