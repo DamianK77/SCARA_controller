@@ -37,14 +37,12 @@ void calculate_invkin(float *xyz, float *goal_angs, float *curr_angs, float *del
         for (uint8_t i = 0; i < 2; i++)
         {
             delta_angs[i] = -1*(curr_angs[i] - goal_angs[i]);
-        }
+        }       
 
-        
-
-        ESP_LOGI("KINEMATICS", "GOAL POS xyz: %f %f %f ==== calculated goal_angs q1 q2: %f %f goal z: %f", xyz[0], xyz[1], xyz[2], goal_angs[0], goal_angs[1], z);
-        ESP_LOGI("KINEMATICS", "ang deltas: %f %f z delta: %f", delta_angs[0], delta_angs[1], *delta_z);
+        // ESP_LOGI("KINEMATICS", "GOAL POS xyz: %f %f %f ==== calculated goal_angs q1 q2: %f %f goal z: %f", xyz[0], xyz[1], xyz[2], goal_angs[0], goal_angs[1], z);
+        // ESP_LOGI("KINEMATICS", "ang deltas: %f %f z delta: %f", delta_angs[0], delta_angs[1], *delta_z);
     } else {
-        ESP_LOGI("KINEMATICS", "ERROR, angle not in range");
+        //ESP_LOGI("KINEMATICS", "ERROR, angle not in range");
         for (uint8_t i = 0; i < 2; i++)
         {
             delta_angs[i] = 0;
@@ -56,5 +54,5 @@ void calculate_fwdkin(float *xyz, float *goal_angs)
 {
     xyz[0] = L1*cos(goal_angs[0]) + L2*cos(goal_angs[0] + goal_angs[1]);
     xyz[1] = L1*sin(goal_angs[0]) + L2*sin(goal_angs[0] + goal_angs[1]);
-    ESP_LOGI("KINEMATICS", "fwkin: %f %f", xyz[0], xyz[1]);
+    //ESP_LOGI("KINEMATICS", "fwkin: %f %f", xyz[0], xyz[1]);
 }

@@ -62,10 +62,14 @@ bool mot0_moving = 0;
 bool mot1_moving = 0;
 bool motz_moving = 0;
 bool homed = 0;
+bool busy = 0;
 volatile uint8_t step0_state = 0;
 volatile uint8_t step1_state = 0;
 volatile uint8_t step2_state = 0;
 volatile uint32_t step_counts[3] = {0,0,0};
+float curr_angs[3] = {90, 0, 0};
+float goal_xyz[3] = {0, 200, 0};
+float curr_z = 0;
 gptimer_handle_t gptimer0 = NULL;
 gptimer_handle_t gptimer1 = NULL;
 gptimer_handle_t gptimer2 = NULL;
@@ -146,9 +150,9 @@ static bool IRAM_ATTR timer3_alarm_cb(gptimer_handle_t timer, const gptimer_alar
 }
 
 //============FUNCTIONS=================================
-void move_arm_by_ang(const float (delta_angs)[2], float delta_z, const float (speeds)[3], gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle_t gptimer2, gptimer_handle_t gptimer3) 
+void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float (speeds)[3], gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle_t gptimer2, gptimer_handle_t gptimer3) 
 {
-    float delta_angs_compensated[2] = {delta_angs[0], delta_angs[1] + delta_angs[0]};
+    float delta_angs_compensated[3] = {delta_angs[0], delta_angs[1] + delta_angs[0], 0};
     
     //ESP_LOGI("MOVE", "comp delta angs %f %f", delta_angs_compensated[0], delta_angs_compensated[1]);
 
@@ -173,6 +177,18 @@ void move_arm_by_ang(const float (delta_angs)[2], float delta_z, const float (sp
         gpio_set_level(DIR_IO2, 0);
     }
 
+    step_counts[0] = fabs(delta_angs_compensated[0] * STEPS_PER_DEG_01);
+    step_counts[1] = fabs(delta_angs_compensated[1] * STEPS_PER_DEG_01);
+    step_counts[2] = fabs(delta_z*STEPS_PER_MM_Z);
+
+    if (step_counts[0] != 0 && step_counts[1] != 0) {
+        if (step_counts[0] > step_counts[1]) {
+            speeds[1] = step_counts[1]*speeds[0]/step_counts[0];
+        } else {
+            speeds[0] = step_counts[0]*speeds[1]/step_counts[1];
+        }
+    }
+
     //config speeds
     gptimer_alarm_config_t alarm0_config = {
         .alarm_count = (int)(1.0/(2.0*STEPS_PER_DEG_01*speeds[0]*(1.0/STEPCLOCK_FREQ))), 
@@ -195,9 +211,6 @@ void move_arm_by_ang(const float (delta_angs)[2], float delta_z, const float (sp
     };
     gptimer_set_alarm_action(gptimer2, &alarm2_config);
 
-    step_counts[0] = fabs(delta_angs_compensated[0] * STEPS_PER_DEG_01);
-    step_counts[1] = fabs(delta_angs_compensated[1] * STEPS_PER_DEG_01);
-    step_counts[2] = fabs(delta_z*STEPS_PER_MM_Z);
     
     if (step_counts[0] != 0) {
         mot0_moving = 1;
@@ -233,7 +246,7 @@ esp_err_t i2c_master_init(int i2c_master_port, int sda_pin, int scl_pin)
 
 void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle_t gptimer2, gptimer_handle_t gptimer3) {
     uint16_t angB = as_read_angle(I2C_MASTER_NUM0, 0x36); // value * 0.08789 = angle. 1.8degree*3 = 61
-    float delta_angs[2];
+    float delta_angs[3];
     float delta_z = 0;
     float speeds[3] = {25, 25, 5};
 
@@ -284,12 +297,9 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
 //===================TASKS====================
 static void movement_task(void *arg)
 {
-    float delta_angs[2] = {0, 0};
-    float curr_angs[2] = {90, 0};
+    float delta_angs[3] = {0, 0, 0};
     float delta_z = 0;
-    float curr_z = 0;
-    float goal_xyz[3] = {0, 200, 0};
-    float goal_angs[2] = {0, 0};
+    float goal_angs[3] = {0, 0, 0};
     float speeds[3] = {30, 30, 40};
 
     //=========================================
@@ -356,12 +366,15 @@ static void movement_task(void *arg)
         scanf("%9s", chr);
         
         if (!strcmp(chr, "G28")) {
+            busy = 1;
             homing(gptimer0, gptimer1, gptimer2, gptimer3);
             curr_angs[0] = 0.0;
             curr_angs[1] = 90.0;
+            busy = 0;
         }
 
         if(!strcmp(chr, "G1")) {
+            busy = 1;
             strcpy(chr, "");
             scanf("%9s", chr);
             memmove(chr, chr+1, strlen(chr));
@@ -382,7 +395,7 @@ static void movement_task(void *arg)
             memmove(chr, chr+1, strlen(chr));
             speed = atoi(chr);
 
-            printf("Read XYZ speed: %i %i %i %i", x, y, z, speed);
+            //printf("Read XYZ speed: %i %i %i %i", x, y, z, speed);
             
             goal_xyz[0] = x;
             goal_xyz[1] = y;
@@ -396,19 +409,21 @@ static void movement_task(void *arg)
                 move_arm_by_ang(delta_angs, delta_z, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
 
                 while (mot0_moving != 0 || mot1_moving != 0 || motz_moving != 0) {
-                    vTaskDelay(400/portTICK_PERIOD_MS);
-                    ESP_LOGI("BLOCK LOOP", "MOT0mov: %i MOT1mov: %i, MOTzmov: %i", mot0_moving, mot1_moving, motz_moving);
+                    vTaskDelay(40/portTICK_PERIOD_MS);
+                    //ESP_LOGI("BLOCK LOOP", "MOT0mov: %i MOT1mov: %i, MOTzmov: %i", mot0_moving, mot1_moving, motz_moving);
                 }
 
                 curr_angs[0] = goal_angs[0];
                 curr_angs[1] = goal_angs[1];
                 curr_angs[2] = goal_angs[2];
                 curr_z = goal_xyz[2];
-            } 
 
+            } 
+        busy = 0;
+        //uart_flush_input(UART_NUM_0);
         }
 
-        vTaskDelay(500 / portTICK_PERIOD_MS);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
     }
 
 
@@ -436,16 +451,17 @@ void app_main(void)
     //uart_init();
 
     //================PROGRAM=================================
-    ESP_LOGI(TAG, "STARTING PROGRAM SECTION");
+    //(TAG, "STARTING PROGRAM SECTION");
 
     //xTaskCreate(rx_task1, "uart_rx_task_1", 1024*2, NULL, configMAX_PRIORITIES-1, NULL);
     xTaskCreate(movement_task, "movement_task", 4096*2, NULL, configMAX_PRIORITIES, NULL);
     //servo42c_disable();
 
     while(1) {
-        uint16_t ang1 = as_read_angle(I2C_MASTER_NUM0, 0x36); //0-4096, middle is 3100, opposite of middle is 1052
-        ESP_LOGI("AS5600", "ANG1: %i", ang1);
-        vTaskDelay(1000/portTICK_PERIOD_MS);
+        //uint16_t ang1 = as_read_angle(I2C_MASTER_NUM0, 0x36); //0-4096, middle is 3100, opposite of middle is 1052
+        //ESP_LOGI("AS5600", "ANG1: %i", ang1);
+        printf("%i %f %f %f %f %f %f %i\n", homed, goal_xyz[0], goal_xyz[1], goal_xyz[2], curr_angs[0], curr_angs[1], curr_angs[2], busy);
+        vTaskDelay(10/portTICK_PERIOD_MS);
     }
 
 
