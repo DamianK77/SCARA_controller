@@ -4,5 +4,6 @@ sdkconfig.old
 .vscode
 .devcontainer
 .CMakeLists.txt
+build/
 sdkconfig
-build
+sdkconfig.old
