@@ -1,3 +1,8 @@
 build/
 sdkconfig
 sdkconfig.old
+.vscode
+.devcontainer
+.CMakeLists.txt
+sdkconfig
+build
