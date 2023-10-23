@@ -60,7 +60,7 @@ static const char *TAG = "SCARA";
 
 bool mot0_moving = 0;
 bool mot1_moving = 0;
-bool motz_moving = 0;
+bool mot2_moving = 0;
 bool homed = 0;
 bool busy = 0;
 volatile uint8_t step0_state = 0;
@@ -123,7 +123,7 @@ static bool IRAM_ATTR timer2_alarm_cb(gptimer_handle_t timer, const gptimer_alar
 
     if (step_counts[2] <= 0) {
         gptimer_stop(timer);
-        motz_moving = 0;
+        mot2_moving = 0;
     }
     step2_state = !step2_state;
     gpio_set_level(STEP_IO2, step2_state);
@@ -141,7 +141,7 @@ static bool IRAM_ATTR timer3_alarm_cb(gptimer_handle_t timer, const gptimer_alar
 
     // if (step0_count <= 0) {
     //     gptimer_stop(timer);
-    //      motz_moving = 0;
+    //      mot2_moving = 0;
     // }
     // step0_state = !step0_state;
     // gpio_set_level(STEP_IO0, step0_state);
@@ -221,7 +221,7 @@ void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float (speeds)[
         gptimer_start(gptimer1);
     }
     if (step_counts[2] != 0) {
-       motz_moving = 1;
+       mot2_moving = 1;
        gptimer_start(gptimer2);
     }
 
@@ -256,7 +256,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
     delta_z = -0.5;
     while (!gpio_get_level(MOT2_ENDSTOP_PIN)) {
         move_arm_by_ang(delta_angs, delta_z, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
-        while (motz_moving) {
+        while (mot2_moving) {
             vTaskDelay(10/portTICK_PERIOD_MS);
         }
         //ESP_LOGI("HOMING", "IN LOOP HOMING MOT2");
@@ -408,9 +408,9 @@ static void movement_task(void *arg)
             if (error == 0 && homed == 1 && speed > 0 && speed < 201) {
                 move_arm_by_ang(delta_angs, delta_z, speeds, gptimer0, gptimer1, gptimer2, gptimer3);
 
-                while (mot0_moving != 0 || mot1_moving != 0 || motz_moving != 0) {
+                while (mot0_moving != 0 || mot1_moving != 0 || mot2_moving != 0) {
                     vTaskDelay(40/portTICK_PERIOD_MS);
-                    //ESP_LOGI("BLOCK LOOP", "MOT0mov: %i MOT1mov: %i, MOTzmov: %i", mot0_moving, mot1_moving, motz_moving);
+                    //ESP_LOGI("BLOCK LOOP", "MOT0mov: %i MOT1mov: %i, mot2mov: %i", mot0_moving, mot1_moving, mot2_moving);
                 }
 
                 curr_angs[0] = goal_angs[0];
