@@ -180,7 +180,7 @@ void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float speed, gp
         }
     }
 
-    //calculate speeds for each motor
+    //calculate speeds for each motor based on joint time-based interpolation
     speeds[0] = speed*times[0]/max_time;
     speeds[1] = speed*times[1]/max_time;
     speeds[2] = speed*times[2]/max_time;
