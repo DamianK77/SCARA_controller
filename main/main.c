@@ -44,7 +44,8 @@
 #define STEPS_PER_MM_Z 203.68 //steps per mm for 0,9deg motor. 10mm pulley length = 31.42mm/rotation, 400steps/rotation gives 12.73 steps/mm, 203.68 for 16x microstep 
 
 #define STEPCLOCK_FREQ 10000000
-#define STARTSPEED 1000
+#define STARTALARM 1000
+#define START_SPEED 1 //in degrees per second
 
 #define MAX_SPEED_0 30 //in degrees per second
 #define MAX_SPEED_1 30 //in degrees per second
@@ -74,10 +75,16 @@ volatile uint32_t step_counts[3] = {0,0,0};
 volatile uint32_t target_steps[3] = {0,0,0};
 float curr_angs[3] = {90, 0, 0};
 float goal_xyz[3] = {0, 200, 0};
+float curr[3] = {0, 0, 0};
+float accels[3] = {100, 100, 100};
+uint32_t alarm_accels[3] = {1, 1, 1};
+uint32_t target_alarms[3] = {0, 0, 0};
+long curr_alarms[3] = {0, 0, 0};
 float curr_z = 0;
 gptimer_handle_t gptimer0 = NULL;
 gptimer_handle_t gptimer1 = NULL;
 gptimer_handle_t gptimer2 = NULL;
+
 //===============CALLBACKS============
 
 static bool IRAM_ATTR timer0_alarm_cb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
@@ -96,6 +103,28 @@ static bool IRAM_ATTR timer0_alarm_cb(gptimer_handle_t timer, const gptimer_alar
     step0_state = !step0_state;
     gpio_set_level(STEP_IO0, step0_state);
 
+    if (step_counts[0] > target_steps[0]/2) { // accelerating
+        curr_alarms[0] = curr_alarms[0] - alarm_accels[0];
+    } else {
+        curr_alarms[0] = curr_alarms[0] + alarm_accels[0];
+    }
+
+    if (curr_alarms[0] < target_alarms[0]) {
+        gptimer_alarm_config_t alarm0_config = {
+            .alarm_count = curr_alarms[0],
+            .flags.auto_reload_on_alarm = true,
+            .reload_count = 0,
+        };
+        gptimer_set_alarm_action(timer, &alarm0_config);
+    } else {
+        gptimer_alarm_config_t alarm0_config = {
+            .alarm_count = target_alarms[0],
+            .flags.auto_reload_on_alarm = true,
+            .reload_count = 0,
+        };
+        gptimer_set_alarm_action(timer, &alarm0_config);
+    }
+
     return (high_task_awoken == pdTRUE);
 }
 
@@ -112,9 +141,33 @@ static bool IRAM_ATTR timer1_alarm_cb(gptimer_handle_t timer, const gptimer_alar
         mot1_moving = 0;
         target_steps[1] = 0;
     }
+    
 
     step1_state = !step1_state;
     gpio_set_level(STEP_IO1, step1_state);
+
+    if (step_counts[1] > target_steps[1]/2) { // accelerating
+        curr_alarms[1] = curr_alarms[1] - alarm_accels[1];
+    } else {
+        curr_alarms[1] = curr_alarms[1] + alarm_accels[1];
+    }
+
+    
+    if (curr_alarms[1] > target_alarms[1]) {
+        gptimer_alarm_config_t alarm1_config = {
+            .alarm_count = curr_alarms[1],
+            .flags.auto_reload_on_alarm = true,
+            .reload_count = 0,
+        };
+        gptimer_set_alarm_action(timer, &alarm1_config);
+    } else {
+        gptimer_alarm_config_t alarm1_config = {
+            .alarm_count = target_alarms[1],
+            .flags.auto_reload_on_alarm = true,
+            .reload_count = 0,
+        };
+        gptimer_set_alarm_action(timer, &alarm1_config);
+    }
 
     return (high_task_awoken == pdTRUE);
 }
@@ -155,7 +208,7 @@ int speed2alarm(float speed, int axis)
 void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float speed, gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle_t gptimer2) 
 {
     float delta_angs_compensated[3] = {delta_angs[0], delta_angs[1] + delta_angs[0], 0};
-    float speeds[3] = {speed, speed, speed};
+    float goal_speeds[3] = {speed, speed, speed};
     
     //ESP_LOGI("MOVE", "comp delta angs %f %f", delta_angs_compensated[0], delta_angs_compensated[1]);
 
@@ -189,9 +242,9 @@ void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float speed, gp
 
     //calculate times for each motor assuming max speed
     float times[3] = {0, 0, 0};
-    times[0] = (step_counts[0]/speeds[0])/STEPS_PER_DEG_01;
-    times[1] = (step_counts[1]/speeds[1])/STEPS_PER_DEG_01;
-    times[2] = (step_counts[2]/speeds[2])/STEPS_PER_MM_Z;
+    times[0] = (step_counts[0]/goal_speeds[0])/STEPS_PER_DEG_01;
+    times[1] = (step_counts[1]/goal_speeds[1])/STEPS_PER_DEG_01;
+    times[2] = (step_counts[2]/goal_speeds[2])/STEPS_PER_MM_Z;
 
     float max_time = 0;
     for (int i = 0; i < 3; i++) {
@@ -200,28 +253,43 @@ void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float speed, gp
         }
     }
 
+    //calculate accel for timers
+    alarm_accels[0] = speed2alarm(accels[0], 0);
+    alarm_accels[1] = speed2alarm(accels[1], 1);
+    alarm_accels[2] = speed2alarm(accels[2], 2);
+
     //calculate speeds for each motor based on joint time-based interpolation
-    speeds[0] = speed*times[0]/max_time;
-    speeds[1] = speed*times[1]/max_time;
-    speeds[2] = speed*times[2]/max_time;
+    goal_speeds[0] = speed*times[0]/max_time;
+    goal_speeds[1] = speed*times[1]/max_time;
+    goal_speeds[2] = speed*times[2]/max_time;
+
+    //calculate max alarms for timers
+    target_alarms[0] = speed2alarm(goal_speeds[0], 0);
+    target_alarms[1] = speed2alarm(goal_speeds[1], 1);
+    target_alarms[2] = speed2alarm(goal_speeds[2], 2);
+
+    //calculate current alarms for timers
+    curr_alarms[0] = speed2alarm(START_SPEED, 0);
+    curr_alarms[1] = speed2alarm(START_SPEED, 1);
+    curr_alarms[2] = speed2alarm(START_SPEED, 2);
 
     //config speeds
     gptimer_alarm_config_t alarm0_config = {
-        .alarm_count = speed2alarm(speeds[0], 0), 
+        .alarm_count = speed2alarm(START_SPEED, 0), 
         .flags.auto_reload_on_alarm = true,
         .reload_count = 0,
     };
     gptimer_set_alarm_action(gptimer0, &alarm0_config);
 
     gptimer_alarm_config_t alarm1_config = {
-        .alarm_count = speed2alarm(speeds[1], 1),
+        .alarm_count = speed2alarm(START_SPEED, 1),
         .flags.auto_reload_on_alarm = true,
         .reload_count = 0,
     };
     gptimer_set_alarm_action(gptimer1, &alarm1_config);
 
     gptimer_alarm_config_t alarm2_config = {
-        .alarm_count = speed2alarm(speeds[2], 2),
+        .alarm_count = speed2alarm(START_SPEED, 2),
         .flags.auto_reload_on_alarm = true,
         .reload_count = 0,
     };
@@ -349,7 +417,7 @@ static void movement_task(void *arg)
 
     gptimer_alarm_config_t alarm0_config = {
         .reload_count = 0,
-        .alarm_count = STARTSPEED,
+        .alarm_count = STARTALARM,
         .flags.auto_reload_on_alarm = true,
     };
 
