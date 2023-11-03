@@ -71,15 +71,20 @@ bool busy = 0;
 volatile uint8_t step0_state = 0;
 volatile uint8_t step1_state = 0;
 volatile uint8_t step2_state = 0;
+
 volatile uint32_t step_counts[3] = {0,0,0};
 volatile uint32_t target_steps[3] = {0,0,0};
+
 float curr_angs[3] = {90, 0, 0};
 float goal_xyz[3] = {0, 200, 0};
-float curr[3] = {0, 0, 0};
-float accels[3] = {100, 100, 100};
-uint32_t alarm_accels[3] = {1, 1, 1};
+
+float accels[3] = {100, 100, 100};//TODO: calculate alarm_accels from accels
+uint32_t alarm_accels[3] = {100, 100, 100};
+
 uint32_t target_alarms[3] = {0, 0, 0};
-long curr_alarms[3] = {0, 0, 0};
+uint32_t curr_alarms[3] = {0, 0, 0};
+uint32_t endaccel_steps[3] = {0, 0, 0};
+
 float curr_z = 0;
 gptimer_handle_t gptimer0 = NULL;
 gptimer_handle_t gptimer1 = NULL;
@@ -104,26 +109,23 @@ static bool IRAM_ATTR timer0_alarm_cb(gptimer_handle_t timer, const gptimer_alar
     gpio_set_level(STEP_IO0, step0_state);
 
     if (step_counts[0] > target_steps[0]/2) { // accelerating
-        curr_alarms[0] = curr_alarms[0] - alarm_accels[0];
-    } else {
-        curr_alarms[0] = curr_alarms[0] + alarm_accels[0];
+        if (curr_alarms[0] > target_alarms[0]) { // acceleration phase
+            curr_alarms[0] = curr_alarms[0] - alarm_accels[0];
+        } else if (!endaccel_steps[0]) { // end of acceleration phase, save steps it took to accelerate
+            endaccel_steps[0] = target_steps[0] - step_counts[0];
+        }
+    } else { //decelerating
+        if (step_counts[0] < endaccel_steps[0] || endaccel_steps[0] == 0) { //deceleration phase
+            curr_alarms[0] = curr_alarms[0] + alarm_accels[0];
+        } 
     }
 
-    if (curr_alarms[0] < target_alarms[0]) {
         gptimer_alarm_config_t alarm0_config = {
             .alarm_count = curr_alarms[0],
             .flags.auto_reload_on_alarm = true,
             .reload_count = 0,
         };
         gptimer_set_alarm_action(timer, &alarm0_config);
-    } else {
-        gptimer_alarm_config_t alarm0_config = {
-            .alarm_count = target_alarms[0],
-            .flags.auto_reload_on_alarm = true,
-            .reload_count = 0,
-        };
-        gptimer_set_alarm_action(timer, &alarm0_config);
-    }
 
     return (high_task_awoken == pdTRUE);
 }
@@ -142,32 +144,27 @@ static bool IRAM_ATTR timer1_alarm_cb(gptimer_handle_t timer, const gptimer_alar
         target_steps[1] = 0;
     }
     
-
     step1_state = !step1_state;
     gpio_set_level(STEP_IO1, step1_state);
 
     if (step_counts[1] > target_steps[1]/2) { // accelerating
-        curr_alarms[1] = curr_alarms[1] - alarm_accels[1];
-    } else {
-        curr_alarms[1] = curr_alarms[1] + alarm_accels[1];
+        if (curr_alarms[1] > target_alarms[1]) { // acceleration phase
+            curr_alarms[1] = curr_alarms[1] - alarm_accels[1];
+        } else if (!endaccel_steps[1]) { // end of acceleration phase, save steps it took to accelerate
+            endaccel_steps[1] = target_steps[1] - step_counts[1];
+        }
+    } else { //decelerating
+        if (step_counts[1] < endaccel_steps[1] || endaccel_steps[1] == 0) { //deceleration phase
+            curr_alarms[1] = curr_alarms[1] + alarm_accels[1];
+        } 
     }
 
-    
-    if (curr_alarms[1] > target_alarms[1]) {
         gptimer_alarm_config_t alarm1_config = {
             .alarm_count = curr_alarms[1],
             .flags.auto_reload_on_alarm = true,
             .reload_count = 0,
         };
         gptimer_set_alarm_action(timer, &alarm1_config);
-    } else {
-        gptimer_alarm_config_t alarm1_config = {
-            .alarm_count = target_alarms[1],
-            .flags.auto_reload_on_alarm = true,
-            .reload_count = 0,
-        };
-        gptimer_set_alarm_action(timer, &alarm1_config);
-    }
 
     return (high_task_awoken == pdTRUE);
 }
@@ -253,11 +250,6 @@ void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float speed, gp
         }
     }
 
-    //calculate accel for timers
-    alarm_accels[0] = speed2alarm(accels[0], 0);
-    alarm_accels[1] = speed2alarm(accels[1], 1);
-    alarm_accels[2] = speed2alarm(accels[2], 2);
-
     //calculate speeds for each motor based on joint time-based interpolation
     goal_speeds[0] = speed*times[0]/max_time;
     goal_speeds[1] = speed*times[1]/max_time;
@@ -272,6 +264,11 @@ void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float speed, gp
     curr_alarms[0] = speed2alarm(START_SPEED, 0);
     curr_alarms[1] = speed2alarm(START_SPEED, 1);
     curr_alarms[2] = speed2alarm(START_SPEED, 2);
+
+    //zero endaccel counters
+    endaccel_steps[0] = 0;
+    endaccel_steps[1] = 0;
+    endaccel_steps[2] = 0;
 
     //config speeds
     gptimer_alarm_config_t alarm0_config = {
@@ -534,7 +531,9 @@ void app_main(void)
     while(1) {
         //uint16_t ang1 = as_read_angle(I2C_MASTER_NUM0, 0x36); //0-4096, middle is 3100, opposite of middle is 1052
         //ESP_LOGI("AS5600", "ANG1: %i", ang1);
-        printf("%i %f %f %f %f %f %f %i\n", homed, goal_xyz[0], goal_xyz[1], goal_xyz[2], curr_angs[0], curr_angs[1], curr_angs[2], busy);
+        //printf("%i %f %f %f %f %f %f %i\n", homed, goal_xyz[0], goal_xyz[1], goal_xyz[2], curr_angs[0], curr_angs[1], curr_angs[2], busy);
+        
+         printf(">alarm:%i >stepcount:%i >endaccel_steps:%i\n", (int)curr_alarms[1], (int)step_counts[1], (int)endaccel_steps[1]);
         vTaskDelay(10/portTICK_PERIOD_MS);
     }
 
