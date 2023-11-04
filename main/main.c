@@ -79,7 +79,7 @@ float curr_angs[3] = {90, 0, 0};
 float goal_xyz[3] = {0, 200, 0};
 
 float accels[3] = {100, 100, 100};//TODO: calculate alarm_accels from accels
-uint32_t alarm_accels[3] = {100, 100, 100};
+uint32_t alarm_accels[3] = {500, 500, 500};
 
 uint32_t target_alarms[3] = {0, 0, 0};
 uint32_t curr_alarms[3] = {0, 0, 0};
@@ -109,8 +109,10 @@ static bool IRAM_ATTR timer0_alarm_cb(gptimer_handle_t timer, const gptimer_alar
     gpio_set_level(STEP_IO0, step0_state);
 
     if (step_counts[0] > target_steps[0]/2) { // accelerating
-        if (curr_alarms[0] > target_alarms[0]) { // acceleration phase
+        if (curr_alarms[0] > target_alarms[0] && curr_alarms[0] + target_alarms[0] > alarm_accels[0]) { // acceleration phase
             curr_alarms[0] = curr_alarms[0] - alarm_accels[0];
+        } else if (curr_alarms[0] + target_alarms[0] <= alarm_accels[0]) {
+            curr_alarms[0] = target_alarms[0];
         } else if (!endaccel_steps[0]) { // end of acceleration phase, save steps it took to accelerate
             endaccel_steps[0] = target_steps[0] - step_counts[0];
         }
@@ -148,8 +150,10 @@ static bool IRAM_ATTR timer1_alarm_cb(gptimer_handle_t timer, const gptimer_alar
     gpio_set_level(STEP_IO1, step1_state);
 
     if (step_counts[1] > target_steps[1]/2) { // accelerating
-        if (curr_alarms[1] > target_alarms[1]) { // acceleration phase
+        if (curr_alarms[1] > target_alarms[1] && curr_alarms[1] + target_alarms[1] > alarm_accels[1]) { // acceleration phase
             curr_alarms[1] = curr_alarms[1] - alarm_accels[1];
+        } else if (curr_alarms[1] + target_alarms[1] <= alarm_accels[1]) {
+            curr_alarms[1] = target_alarms[1];
         } else if (!endaccel_steps[1]) { // end of acceleration phase, save steps it took to accelerate
             endaccel_steps[1] = target_steps[1] - step_counts[1];
         }
@@ -329,7 +333,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
     uint16_t angB = as_read_angle(I2C_MASTER_NUM0, 0x36); // value * 0.08789 = angle. 1.8degree*3 = 61
     float delta_angs[3];
     float delta_z = 0;
-    float speed = 30;
+    float speed = 60;
 
     //home motor z to 0 position
     delta_angs[0] = 0.00;
@@ -531,9 +535,9 @@ void app_main(void)
     while(1) {
         //uint16_t ang1 = as_read_angle(I2C_MASTER_NUM0, 0x36); //0-4096, middle is 3100, opposite of middle is 1052
         //ESP_LOGI("AS5600", "ANG1: %i", ang1);
-        //printf("%i %f %f %f %f %f %f %i\n", homed, goal_xyz[0], goal_xyz[1], goal_xyz[2], curr_angs[0], curr_angs[1], curr_angs[2], busy);
+        printf("%i %f %f %f %f %f %f %i\n", homed, goal_xyz[0], goal_xyz[1], goal_xyz[2], curr_angs[0], curr_angs[1], curr_angs[2], busy);
         
-         printf(">alarm:%i >stepcount:%i >endaccel_steps:%i\n", (int)curr_alarms[1], (int)step_counts[1], (int)endaccel_steps[1]);
+         //printf(">alarm:%i >stepcount:%i >endaccel_steps:%i\n", (int)curr_alarms[1], (int)step_counts[1], (int)endaccel_steps[1]);
         vTaskDelay(10/portTICK_PERIOD_MS);
     }
 
