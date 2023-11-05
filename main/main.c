@@ -51,6 +51,8 @@
 #define MAX_SPEED_1 30 //in degrees per second
 #define MAX_SPEED_2 10 //in mm per second
 
+#define LMOVE_RES 0.2 //in mm
+
 //static const int RX_BUF_SIZE = 2048;
 
 #define TXD_PIN1 (GPIO_NUM_4)
@@ -108,26 +110,26 @@ static bool IRAM_ATTR timer0_alarm_cb(gptimer_handle_t timer, const gptimer_alar
     step0_state = !step0_state;
     gpio_set_level(STEP_IO0, step0_state);
 
-    if (step_counts[0] > target_steps[0]/2) { // accelerating
-        if (curr_alarms[0] > target_alarms[0] && curr_alarms[0] + target_alarms[0] > alarm_accels[0]) { // acceleration phase
-            curr_alarms[0] = curr_alarms[0] - alarm_accels[0];
-        } else if (curr_alarms[0] + target_alarms[0] <= alarm_accels[0]) {
-            curr_alarms[0] = target_alarms[0];
-        } else if (!endaccel_steps[0]) { // end of acceleration phase, save steps it took to accelerate
-            endaccel_steps[0] = target_steps[0] - step_counts[0];
-        }
-    } else { //decelerating
-        if (step_counts[0] < endaccel_steps[0] || endaccel_steps[0] == 0) { //deceleration phase
-            curr_alarms[0] = curr_alarms[0] + alarm_accels[0];
-        } 
-    }
+    // if (step_counts[0] > target_steps[0]/2) { // accelerating
+    //     if (curr_alarms[0] > target_alarms[0] && curr_alarms[0] + target_alarms[0] > alarm_accels[0]) { // acceleration phase
+    //         curr_alarms[0] = curr_alarms[0] - alarm_accels[0];
+    //     } else if (curr_alarms[0] + target_alarms[0] <= alarm_accels[0]) {
+    //         curr_alarms[0] = target_alarms[0];
+    //     } else if (!endaccel_steps[0]) { // end of acceleration phase, save steps it took to accelerate
+    //         endaccel_steps[0] = target_steps[0] - step_counts[0];
+    //     }
+    // } else { //decelerating
+    //     if (step_counts[0] < endaccel_steps[0] || endaccel_steps[0] == 0) { //deceleration phase
+    //         curr_alarms[0] = curr_alarms[0] + alarm_accels[0];
+    //     } 
+    // }
 
-        gptimer_alarm_config_t alarm0_config = {
-            .alarm_count = curr_alarms[0],
-            .flags.auto_reload_on_alarm = true,
-            .reload_count = 0,
-        };
-        gptimer_set_alarm_action(timer, &alarm0_config);
+    //     gptimer_alarm_config_t alarm0_config = {
+    //         .alarm_count = curr_alarms[0],
+    //         .flags.auto_reload_on_alarm = true,
+    //         .reload_count = 0,
+    //     };
+    //    gptimer_set_alarm_action(timer, &alarm0_config);
 
     return (high_task_awoken == pdTRUE);
 }
@@ -149,26 +151,26 @@ static bool IRAM_ATTR timer1_alarm_cb(gptimer_handle_t timer, const gptimer_alar
     step1_state = !step1_state;
     gpio_set_level(STEP_IO1, step1_state);
 
-    if (step_counts[1] > target_steps[1]/2) { // accelerating
-        if (curr_alarms[1] > target_alarms[1] && curr_alarms[1] + target_alarms[1] > alarm_accels[1]) { // acceleration phase
-            curr_alarms[1] = curr_alarms[1] - alarm_accels[1];
-        } else if (curr_alarms[1] + target_alarms[1] <= alarm_accels[1]) {
-            curr_alarms[1] = target_alarms[1];
-        } else if (!endaccel_steps[1]) { // end of acceleration phase, save steps it took to accelerate
-            endaccel_steps[1] = target_steps[1] - step_counts[1];
-        }
-    } else { //decelerating
-        if (step_counts[1] < endaccel_steps[1] || endaccel_steps[1] == 0) { //deceleration phase
-            curr_alarms[1] = curr_alarms[1] + alarm_accels[1];
-        } 
-    }
+    // if (step_counts[1] > target_steps[1]/2) { // accelerating
+    //     if (curr_alarms[1] > target_alarms[1] && curr_alarms[1] + target_alarms[1] > alarm_accels[1]) { // acceleration phase
+    //         curr_alarms[1] = curr_alarms[1] - alarm_accels[1];
+    //     } else if (curr_alarms[1] + target_alarms[1] <= alarm_accels[1]) {
+    //         curr_alarms[1] = target_alarms[1];
+    //     } else if (!endaccel_steps[1]) { // end of acceleration phase, save steps it took to accelerate
+    //         endaccel_steps[1] = target_steps[1] - step_counts[1];
+    //     }
+    // } else { //decelerating
+    //     if (step_counts[1] < endaccel_steps[1] || endaccel_steps[1] == 0) { //deceleration phase
+    //         curr_alarms[1] = curr_alarms[1] + alarm_accels[1];
+    //     } 
+    // }
 
-        gptimer_alarm_config_t alarm1_config = {
-            .alarm_count = curr_alarms[1],
-            .flags.auto_reload_on_alarm = true,
-            .reload_count = 0,
-        };
-        gptimer_set_alarm_action(timer, &alarm1_config);
+    //     gptimer_alarm_config_t alarm1_config = {
+    //         .alarm_count = curr_alarms[1],
+    //         .flags.auto_reload_on_alarm = true,
+    //         .reload_count = 0,
+    //     };
+    //     gptimer_set_alarm_action(timer, &alarm1_config);
 
     return (high_task_awoken == pdTRUE);
 }
@@ -276,21 +278,24 @@ void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float speed, gp
 
     //config speeds
     gptimer_alarm_config_t alarm0_config = {
-        .alarm_count = speed2alarm(START_SPEED, 0), 
+        //.alarm_count = speed2alarm(START_SPEED, 0), 
+        .alarm_count = speed2alarm(goal_speeds[0], 0),
         .flags.auto_reload_on_alarm = true,
         .reload_count = 0,
     };
     gptimer_set_alarm_action(gptimer0, &alarm0_config);
 
     gptimer_alarm_config_t alarm1_config = {
-        .alarm_count = speed2alarm(START_SPEED, 1),
+        //.alarm_count = speed2alarm(START_SPEED, 1),
+        .alarm_count = speed2alarm(goal_speeds[1], 1),
         .flags.auto_reload_on_alarm = true,
         .reload_count = 0,
     };
     gptimer_set_alarm_action(gptimer1, &alarm1_config);
 
     gptimer_alarm_config_t alarm2_config = {
-        .alarm_count = speed2alarm(START_SPEED, 2),
+        //.alarm_count = speed2alarm(START_SPEED, 2),
+        .alarm_count = speed2alarm(goal_speeds[2], 2),
         .flags.auto_reload_on_alarm = true,
         .reload_count = 0,
     };
@@ -333,7 +338,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
     uint16_t angB = as_read_angle(I2C_MASTER_NUM0, 0x36); // value * 0.08789 = angle. 1.8degree*3 = 61
     float delta_angs[3];
     float delta_z = 0;
-    float speed = 60;
+    float speed = 20;
 
     //home motor z to 0 position
     delta_angs[0] = 0.00;
@@ -342,7 +347,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
     while (!gpio_get_level(MOT2_ENDSTOP_PIN)) {
         move_arm_by_ang(delta_angs, delta_z, speed, gptimer0, gptimer1, gptimer2);
         while (mot2_moving) {
-            vTaskDelay(10/portTICK_PERIOD_MS);
+            vTaskDelay(1/portTICK_PERIOD_MS);
         }
         //ESP_LOGI("HOMING", "IN LOOP HOMING MOT2");
     }
@@ -360,7 +365,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
         }
         move_arm_by_ang(delta_angs, delta_z, speed, gptimer0, gptimer1, gptimer2);
         while (mot1_moving) {
-            vTaskDelay(10/portTICK_PERIOD_MS);
+            vTaskDelay(1/portTICK_PERIOD_MS);
         }
         //ESP_LOGI("HOMING", "IN LOOP HOMING MOT1, ang: %i", angB);
     } 
@@ -371,7 +376,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
     while (!gpio_get_level(MOT0_ENDSTOP_PIN)) {
         move_arm_by_ang(delta_angs, delta_z, speed, gptimer0, gptimer1, gptimer2);
         while (mot0_moving) {
-            vTaskDelay(10/portTICK_PERIOD_MS);
+            vTaskDelay(1/portTICK_PERIOD_MS);
         }
         //ESP_LOGI("HOMING", "IN LOOP HOMING MOT0");
     }
@@ -484,7 +489,7 @@ static void movement_task(void *arg)
                 move_arm_by_ang(delta_angs, delta_z, speed, gptimer0, gptimer1, gptimer2);
 
                 while (mot0_moving != 0 || mot1_moving != 0 || mot2_moving != 0) {
-                    vTaskDelay(40/portTICK_PERIOD_MS);
+                    vTaskDelay(1/portTICK_PERIOD_MS);
                     //ESP_LOGI("BLOCK LOOP", "MOT0mov: %i MOT1mov: %i, mot2mov: %i", mot0_moving, mot1_moving, mot2_moving);
                 }
 
@@ -496,6 +501,73 @@ static void movement_task(void *arg)
             } 
         busy = 0;
         //uart_flush_input(UART_NUM_0);
+        }
+
+        if (!strcmp(chr, "G2")) { // LMOVE
+            busy = 1;
+            strcpy(chr, "");
+            scanf("%9s", chr);
+            memmove(chr, chr+1, strlen(chr));
+            x = atoi(chr);     
+
+            strcpy(chr, "");
+            scanf("%9s", chr);
+            memmove(chr, chr+1, strlen(chr));
+            y = atoi(chr);
+            
+            strcpy(chr, "");
+            scanf("%9s", chr);
+            memmove(chr, chr+1, strlen(chr));
+            z = atoi(chr);
+
+            strcpy(chr, "");
+            scanf("%9s", chr);
+            memmove(chr, chr+1, strlen(chr));
+            speed = atoi(chr);
+
+            //calculate path
+            float path[3] = {0, 0, 0};
+            path[0] = x - goal_xyz[0];
+            path[1] = y - goal_xyz[1];
+            path[2] = z - goal_xyz[2];
+
+            //ESP_LOGI("G2", "path: %f %f %f", path[0], path[1], path[2]);
+
+            //calculate path length
+            float path_length = sqrt(pow(path[0], 2) + pow(path[1], 2) + pow(path[2], 2));
+            //calculate number of micromoves
+            int num_moves = (int)(path_length/LMOVE_RES);
+            //ESP_LOGI("G2", "num_moves: %i", num_moves);
+            //calculate micromove length
+            float micromove_length_xyz[3] = {0, 0, 0};
+            micromove_length_xyz[0] = path[0]/num_moves;
+            micromove_length_xyz[1] = path[1]/num_moves;
+            micromove_length_xyz[2] = path[2]/num_moves;
+            //ESP_LOGI("G2", "micromove_length_xyz: %f %f %f", micromove_length_xyz[0], micromove_length_xyz[1], micromove_length_xyz[2]);
+            //move micromoves
+            for (int i=0; i < num_moves; i++) {
+                goal_xyz[0] = goal_xyz[0] + micromove_length_xyz[0];
+                goal_xyz[1] = goal_xyz[1] + micromove_length_xyz[1];
+                goal_xyz[2] = goal_xyz[2] + micromove_length_xyz[2];
+
+                calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0], &curr_z, &delta_z ,&error);
+
+                if (error == 0 && homed == 1 && speed > 0 && speed < 201) {
+                    move_arm_by_ang(delta_angs, delta_z, speed, gptimer0, gptimer1, gptimer2);
+
+                    while (mot0_moving != 0 || mot1_moving != 0 || mot2_moving != 0) {
+                        vTaskDelay(1/portTICK_PERIOD_MS);
+                        //ESP_LOGI("BLOCK LOOP", "MOT0mov: %i MOT1mov: %i, mot2mov: %i", mot0_moving, mot1_moving, mot2_moving);
+                    }
+
+                    curr_angs[0] = goal_angs[0];
+                    curr_angs[1] = goal_angs[1];
+                    curr_angs[2] = goal_angs[2];
+                    curr_z = goal_xyz[2];
+
+                } 
+            }
+            busy = 0;
         }
 
         vTaskDelay(100 / portTICK_PERIOD_MS);
