@@ -78,7 +78,7 @@ volatile uint32_t step_counts[3] = {0,0,0};
 volatile uint32_t target_steps[3] = {0,0,0};
 
 float curr_angs[3] = {90, 0, 0};
-float goal_xyz[3] = {0, 200, 0};
+float goal_xyz[3] = {0, L2, 0};
 
 float accels[3] = {100, 100, 100};//TODO: calculate alarm_accels from accels
 uint32_t alarm_accels[3] = {500, 500, 500};
@@ -338,7 +338,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
     uint16_t angB = as_read_angle(I2C_MASTER_NUM0, 0x36); // value * 0.08789 = angle. 1.8degree*3 = 61
     float delta_angs[3];
     float delta_z = 0;
-    float speed = 20;
+    float speed = 10;
 
     //home motor z to 0 position
     delta_angs[0] = 0.00;
