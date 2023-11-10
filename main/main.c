@@ -15,6 +15,7 @@
 #include "driver/uart.h"
 #include "math.h"
 #include "string.h"
+#include "AX_servo.h"
 
 //to move negative angle, dir should be 1
 #define STEP_IO0         GPIO_NUM_5
@@ -55,8 +56,8 @@
 
 //static const int RX_BUF_SIZE = 2048;
 
-#define TXD_PIN1 (GPIO_NUM_4)
-#define RXD_PIN1 (GPIO_NUM_16)
+#define TXD_PIN1 (GPIO_NUM_27)
+#define RXD_PIN1 (GPIO_NUM_26)
 
 #define MOT0_ENDSTOP_PIN    GPIO_NUM_12
 #define MOT2_ENDSTOP_PIN    GPIO_NUM_14
@@ -92,6 +93,12 @@ gptimer_handle_t gptimer0 = NULL;
 gptimer_handle_t gptimer1 = NULL;
 gptimer_handle_t gptimer2 = NULL;
 
+AX_conf_t AX_conf = {
+    .uart = UART_NUM_1,
+    .tx_pin = TXD_PIN1,
+    .rx_pin = RXD_PIN1,
+    .baudrate = 57600,
+};
 //===============CALLBACKS============
 
 static bool IRAM_ATTR timer0_alarm_cb(gptimer_handle_t timer, const gptimer_alarm_event_data_t *edata, void *user_data)
@@ -339,6 +346,10 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
     float delta_angs[3];
     float delta_z = 0;
     float speed = 10;
+
+    //home motor A
+    
+    AX_servo_set_pos(AX_conf, 2, 512);
 
     //home motor z to 0 position
     delta_angs[0] = 0.00;
@@ -597,9 +608,9 @@ void app_main(void)
     i2c_master_init(I2C_MASTER_NUM0, I2C_MASTER_SDA_IO0, I2C_MASTER_SCL_IO0);
     //i2c_master_init(I2C_MASTER_NUM1, I2C_MASTER_SDA_IO1, I2C_MASTER_SCL_IO1);
 
-    //---------------CONFIG UART---------------------
+    //---------------CONFIG AX12---------------------
 
-    //uart_init();
+    AX_servo_init(AX_conf);
 
     //================PROGRAM=================================
     //(TAG, "STARTING PROGRAM SECTION");
