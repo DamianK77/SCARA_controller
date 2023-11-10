@@ -78,8 +78,8 @@ volatile uint8_t step2_state = 0;
 volatile uint32_t step_counts[3] = {0,0,0};
 volatile uint32_t target_steps[3] = {0,0,0};
 
-float curr_angs[3] = {90, 0, 0};
-float goal_xyz[3] = {0, L2, 0};
+float curr_angs[4] = {90, 0, 0, 0};
+float goal_xyza[4] = {0, L2, 0, 0};
 
 float accels[3] = {100, 100, 100};//TODO: calculate alarm_accels from accels
 uint32_t alarm_accels[3] = {500, 500, 500};
@@ -215,7 +215,16 @@ int speed2alarm(float speed, int axis)
     }
 }
 
-void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float speed, gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle_t gptimer2) 
+//ax12a 300deg/1025 = 0.293deg/1
+uint16_t AXdeg2val(float deg) {
+    return (uint16_t)(512+(deg/0.293));
+}
+
+uint16_t AXrpm2val(float rpm) {
+    return (uint16_t)(rpm*0.111);
+}
+
+void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float ang_a, float speed, gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle_t gptimer2) 
 {
     float delta_angs_compensated[3] = {delta_angs[0], delta_angs[1] + delta_angs[0], 0};
     float goal_speeds[3] = {speed, speed, speed};
@@ -322,6 +331,8 @@ void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float speed, gp
        gptimer_start(gptimer2);
     }
 
+    AX_servo_set_pos(AX_conf, 2, AXdeg2val(ang_a));
+
 }
 
 esp_err_t i2c_master_init(int i2c_master_port, int sda_pin, int scl_pin)
@@ -349,14 +360,18 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
 
     //home motor A
     
-    AX_servo_set_pos(AX_conf, 2, 512);
+    AX_servo_set_pos(AX_conf, 2, AXdeg2val(0));
+    
+    while (AX_servo_is_moving(AX_conf, 2)) {
+        vTaskDelay(1/portTICK_PERIOD_MS);
+    }
 
     //home motor z to 0 position
     delta_angs[0] = 0.00;
     delta_angs[1] = 0.00;
     delta_z = -0.5;
     while (!gpio_get_level(MOT2_ENDSTOP_PIN)) {
-        move_arm_by_ang(delta_angs, delta_z, speed, gptimer0, gptimer1, gptimer2);
+        move_arm_by_ang(delta_angs, delta_z, 0, speed, gptimer0, gptimer1, gptimer2);
         while (mot2_moving) {
             vTaskDelay(1/portTICK_PERIOD_MS);
         }
@@ -374,7 +389,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
             delta_angs[0] = 0;
             delta_angs[1] = 0.08;
         }
-        move_arm_by_ang(delta_angs, delta_z, speed, gptimer0, gptimer1, gptimer2);
+        move_arm_by_ang(delta_angs, delta_z, 0, speed, gptimer0, gptimer1, gptimer2);
         while (mot1_moving) {
             vTaskDelay(1/portTICK_PERIOD_MS);
         }
@@ -385,7 +400,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
     delta_angs[0] = -0.08;
     delta_angs[1] = 0.08;
     while (!gpio_get_level(MOT0_ENDSTOP_PIN)) {
-        move_arm_by_ang(delta_angs, delta_z, speed, gptimer0, gptimer1, gptimer2);
+        move_arm_by_ang(delta_angs, delta_z, 0, speed, gptimer0, gptimer1, gptimer2);
         while (mot0_moving) {
             vTaskDelay(1/portTICK_PERIOD_MS);
         }
@@ -494,14 +509,15 @@ static void movement_task(void *arg)
 
             //printf("Read XYZ speed: %i %i %i %i", x, y, z, speed);
             
-            goal_xyz[0] = x;
-            goal_xyz[1] = y;
-            goal_xyz[2] = z;
+            goal_xyza[0] = x;
+            goal_xyza[1] = y;
+            goal_xyza[2] = z;
+            goal_xyza[3] = 0;
 
-            calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0], &curr_z, &delta_z ,&error);
+            calculate_invkin(&goal_xyza[0], &goal_angs[0], &curr_angs[0], &delta_angs[0], &curr_z, &delta_z ,&error);
 
             if (error == 0 && homed == 1 && speed > 0 && speed < 201) {
-                move_arm_by_ang(delta_angs, delta_z, speed, gptimer0, gptimer1, gptimer2);
+                move_arm_by_ang(delta_angs, delta_z, goal_angs[2], speed, gptimer0, gptimer1, gptimer2);
 
                 while (mot0_moving != 0 || mot1_moving != 0 || mot2_moving != 0) {
                     vTaskDelay(1/portTICK_PERIOD_MS);
@@ -511,7 +527,7 @@ static void movement_task(void *arg)
                 curr_angs[0] = goal_angs[0];
                 curr_angs[1] = goal_angs[1];
                 curr_angs[2] = goal_angs[2];
-                curr_z = goal_xyz[2];
+                curr_z = goal_xyza[2];
 
             } 
         busy = 0;
@@ -542,9 +558,9 @@ static void movement_task(void *arg)
 
             //calculate path
             float path[3] = {0, 0, 0};
-            path[0] = x - goal_xyz[0];
-            path[1] = y - goal_xyz[1];
-            path[2] = z - goal_xyz[2];
+            path[0] = x - goal_xyza[0];
+            path[1] = y - goal_xyza[1];
+            path[2] = z - goal_xyza[2];
 
             //ESP_LOGI("G2", "path: %f %f %f", path[0], path[1], path[2]);
 
@@ -561,14 +577,14 @@ static void movement_task(void *arg)
             //ESP_LOGI("G2", "micromove_length_xyz: %f %f %f", micromove_length_xyz[0], micromove_length_xyz[1], micromove_length_xyz[2]);
             //move micromoves
             for (int i=0; i < num_moves; i++) {
-                goal_xyz[0] = goal_xyz[0] + micromove_length_xyz[0];
-                goal_xyz[1] = goal_xyz[1] + micromove_length_xyz[1];
-                goal_xyz[2] = goal_xyz[2] + micromove_length_xyz[2];
+                goal_xyza[0] = goal_xyza[0] + micromove_length_xyz[0];
+                goal_xyza[1] = goal_xyza[1] + micromove_length_xyz[1];
+                goal_xyza[2] = goal_xyza[2] + micromove_length_xyz[2];
 
-                calculate_invkin(&goal_xyz[0], &goal_angs[0], &curr_angs[0], &delta_angs[0], &curr_z, &delta_z ,&error);
+                calculate_invkin(&goal_xyza[0], &goal_angs[0], &curr_angs[0], &delta_angs[0], &curr_z, &delta_z ,&error);
 
                 if (error == 0 && homed == 1 && speed > 0 && speed < 201) {
-                    move_arm_by_ang(delta_angs, delta_z, speed, gptimer0, gptimer1, gptimer2);
+                    move_arm_by_ang(delta_angs, delta_z, goal_angs[2], speed, gptimer0, gptimer1, gptimer2);
 
                     while (mot0_moving != 0 || mot1_moving != 0 || mot2_moving != 0) {
                         vTaskDelay(1/portTICK_PERIOD_MS);
@@ -578,7 +594,7 @@ static void movement_task(void *arg)
                     curr_angs[0] = goal_angs[0];
                     curr_angs[1] = goal_angs[1];
                     curr_angs[2] = goal_angs[2];
-                    curr_z = goal_xyz[2];
+                    curr_z = goal_xyza[2];
 
                 } 
             }
@@ -622,8 +638,8 @@ void app_main(void)
     while(1) {
         //uint16_t ang1 = as_read_angle(I2C_MASTER_NUM0, 0x36); //0-4096, middle is 3100, opposite of middle is 1052
         //ESP_LOGI("AS5600", "ANG1: %i", ang1);
-        printf("%i %f %f %f %f %f %f %i\n", homed, goal_xyz[0], goal_xyz[1], goal_xyz[2], curr_angs[0], curr_angs[1], curr_angs[2], busy);
-        
+        printf("%i %f %f %f %f %f %f %i\n", homed, goal_xyza[0], goal_xyza[1], goal_xyza[2], curr_angs[0], curr_angs[1], curr_angs[2], busy);
+
          //printf(">alarm:%i >stepcount:%i >endaccel_steps:%i\n", (int)curr_alarms[1], (int)step_counts[1], (int)endaccel_steps[1]);
         vTaskDelay(10/portTICK_PERIOD_MS);
     }

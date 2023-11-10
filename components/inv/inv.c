@@ -11,11 +11,12 @@
 //y = L1sin(q0) + L2sin(q0+q1)
 
 
-void calculate_invkin(float *xyz, float *goal_angs, float *curr_angs, float *delta_angs, float *curr_z, float *delta_z, int *error)
+void calculate_invkin(float *xyza, float *goal_angs, float *curr_angs, float *delta_angs, float *curr_z, float *delta_z, int *error)
 {
-    float x = xyz[0];
-    float y = xyz[1];
-    float z = xyz[2];
+    float x = xyza[0];
+    float y = xyza[1];
+    float z = xyza[2];
+    float a = xyza[3];
 
     float q0 = 0.0;
     float q1 = 0.0;
@@ -27,6 +28,8 @@ void calculate_invkin(float *xyz, float *goal_angs, float *curr_angs, float *del
     goal_angs[1] = q1*RAD2DEG;
 
     *delta_z = -1*(*curr_z - z);
+
+    goal_angs[2] = a + (goal_angs[1] - (90 - goal_angs[0]));
 
     *error = 0;
     if (goal_angs[0] > 180 || goal_angs[0] < 0 || goal_angs[1] < -140 || goal_angs[1] > 140 || z < 0 || y < 0 || y > L1+L2 || x > L1+L2 || x < -1*(L1+L2)) {
@@ -50,9 +53,9 @@ void calculate_invkin(float *xyz, float *goal_angs, float *curr_angs, float *del
     }
 }
 
-void calculate_fwdkin(float *xyz, float *goal_angs)
+void calculate_fwdkin(float *xyza, float *goal_angs)
 {
-    xyz[0] = L1*cos(goal_angs[0]) + L2*cos(goal_angs[0] + goal_angs[1]);
-    xyz[1] = L1*sin(goal_angs[0]) + L2*sin(goal_angs[0] + goal_angs[1]);
+    xyza[0] = L1*cos(goal_angs[0]) + L2*cos(goal_angs[0] + goal_angs[1]);
+    xyza[1] = L1*sin(goal_angs[0]) + L2*sin(goal_angs[0] + goal_angs[1]);
     //ESP_LOGI("KINEMATICS", "fwkin: %f %f", xyz[0], xyz[1]);
 }
