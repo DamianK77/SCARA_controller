@@ -220,14 +220,15 @@ uint16_t AXdeg2val(float deg) {
     return (uint16_t)(512+(deg/0.293));
 }
 
-uint16_t AXrpm2val(float rpm) {
-    return (uint16_t)(rpm*0.111);
+//1 = 0,111rpm, 1rpm = 6deg/s so 1 = 0.666deg/s
+uint16_t AXdegpersec2val(float degs) {
+    return (uint16_t)(degs/0.666);
 }
 
 void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float ang_a, float speed, gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle_t gptimer2) 
 {
     float delta_angs_compensated[3] = {delta_angs[0], delta_angs[1] + delta_angs[0], 0};
-    float goal_speeds[3] = {speed, speed, speed};
+    float goal_speeds[4] = {speed, speed, speed, speed};
     
     //ESP_LOGI("MOVE", "comp delta angs %f %f", delta_angs_compensated[0], delta_angs_compensated[1]);
 
@@ -260,13 +261,14 @@ void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float ang_a, fl
     target_steps[2] = step_counts[2];
 
     //calculate times for each motor assuming max speed
-    float times[3] = {0, 0, 0};
+    float times[4] = {0, 0, 0, 0};
     times[0] = (step_counts[0]/goal_speeds[0])/STEPS_PER_DEG_01;
     times[1] = (step_counts[1]/goal_speeds[1])/STEPS_PER_DEG_01;
     times[2] = (step_counts[2]/goal_speeds[2])/STEPS_PER_MM_Z;
+    times[3] = fabs(ang_a - curr_angs[3])/goal_speeds[3];
 
     float max_time = 0;
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
         if (times[i] > max_time) {
             max_time = times[i];
         }
@@ -276,6 +278,7 @@ void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float ang_a, fl
     goal_speeds[0] = speed*times[0]/max_time;
     goal_speeds[1] = speed*times[1]/max_time;
     goal_speeds[2] = speed*times[2]/max_time;
+    goal_speeds[3] = speed*times[3]/max_time;
 
     //calculate max alarms for timers
     target_alarms[0] = speed2alarm(goal_speeds[0], 0);
@@ -291,6 +294,9 @@ void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float ang_a, fl
     endaccel_steps[0] = 0;
     endaccel_steps[1] = 0;
     endaccel_steps[2] = 0;
+
+    //calculate speed for dynamixel
+    uint16_t a_speed = AXdegpersec2val(goal_speeds[3]);
 
     //config speeds
     gptimer_alarm_config_t alarm0_config = {
@@ -331,7 +337,7 @@ void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float ang_a, fl
        gptimer_start(gptimer2);
     }
 
-    AX_servo_set_pos(AX_conf, 2, AXdeg2val(ang_a));
+    AX_servo_set_pos_w_spd(AX_conf, 2, AXdeg2val(ang_a), a_speed);
 
 }
 
@@ -410,6 +416,7 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
     curr_angs[0] = 0.0;
     curr_angs[1] = 90.0;
     curr_angs[2] = 0.0;
+    curr_angs[3] = 0.0;
     curr_z = 0.0;
     homed = 1;
 }
@@ -527,6 +534,7 @@ static void movement_task(void *arg)
                 curr_angs[0] = goal_angs[0];
                 curr_angs[1] = goal_angs[1];
                 curr_angs[2] = goal_angs[2];
+                curr_angs[3] = goal_angs[3];
                 curr_z = goal_xyza[2];
 
             } 
@@ -594,6 +602,7 @@ static void movement_task(void *arg)
                     curr_angs[0] = goal_angs[0];
                     curr_angs[1] = goal_angs[1];
                     curr_angs[2] = goal_angs[2];
+                    curr_angs[3] = goal_angs[3];
                     curr_z = goal_xyza[2];
 
                 } 
