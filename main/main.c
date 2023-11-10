@@ -78,7 +78,7 @@ volatile uint8_t step2_state = 0;
 volatile uint32_t step_counts[3] = {0,0,0};
 volatile uint32_t target_steps[3] = {0,0,0};
 
-float curr_angs[4] = {90, 0, 0, 0};
+float curr_angs[4] = {90, 0, 0};// 1 2 a
 float goal_xyza[4] = {0, L2, 0, 0};
 
 float accels[3] = {100, 100, 100};//TODO: calculate alarm_accels from accels
@@ -265,7 +265,10 @@ void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float ang_a, fl
     times[0] = (step_counts[0]/goal_speeds[0])/STEPS_PER_DEG_01;
     times[1] = (step_counts[1]/goal_speeds[1])/STEPS_PER_DEG_01;
     times[2] = (step_counts[2]/goal_speeds[2])/STEPS_PER_MM_Z;
-    times[3] = fabs(ang_a - curr_angs[3])/goal_speeds[3];
+    times[3] = fabs(ang_a - curr_angs[2])/goal_speeds[3];
+
+    //log times[3], ang_a, curr_angs[3] and goal_speeds[3]
+    //ESP_LOGI("MOVE", "time: %f, ang_a: %f, curr_angs[3]: %f, goal_speeds[3]: %f", times[3], ang_a, curr_angs[3], goal_speeds[3]);
 
     float max_time = 0;
     for (int i = 0; i < 4; i++) {
@@ -416,7 +419,6 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
     curr_angs[0] = 0.0;
     curr_angs[1] = 90.0;
     curr_angs[2] = 0.0;
-    curr_angs[3] = 0.0;
     curr_z = 0.0;
     homed = 1;
 }
@@ -534,7 +536,6 @@ static void movement_task(void *arg)
                 curr_angs[0] = goal_angs[0];
                 curr_angs[1] = goal_angs[1];
                 curr_angs[2] = goal_angs[2];
-                curr_angs[3] = goal_angs[3];
                 curr_z = goal_xyza[2];
 
             } 
@@ -565,10 +566,11 @@ static void movement_task(void *arg)
             speed = atoi(chr);
 
             //calculate path
-            float path[3] = {0, 0, 0};
+            float path[4] = {0, 0, 0, 0};
             path[0] = x - goal_xyza[0];
             path[1] = y - goal_xyza[1];
             path[2] = z - goal_xyza[2];
+            path[3] = 0 - goal_xyza[3];
 
             //ESP_LOGI("G2", "path: %f %f %f", path[0], path[1], path[2]);
 
@@ -578,16 +580,18 @@ static void movement_task(void *arg)
             int num_moves = (int)(path_length/LMOVE_RES);
             //ESP_LOGI("G2", "num_moves: %i", num_moves);
             //calculate micromove length
-            float micromove_length_xyz[3] = {0, 0, 0};
-            micromove_length_xyz[0] = path[0]/num_moves;
-            micromove_length_xyz[1] = path[1]/num_moves;
-            micromove_length_xyz[2] = path[2]/num_moves;
-            //ESP_LOGI("G2", "micromove_length_xyz: %f %f %f", micromove_length_xyz[0], micromove_length_xyz[1], micromove_length_xyz[2]);
+            float micromove_length_xyza[4] = {0, 0, 0, 0};
+            micromove_length_xyza[0] = path[0]/num_moves;
+            micromove_length_xyza[1] = path[1]/num_moves;
+            micromove_length_xyza[2] = path[2]/num_moves;
+            micromove_length_xyza[3] = path[3]/num_moves;
+            //ESP_LOGI("G2", "micromove_length_xyz: %f %f %f %f", micromove_length_xyza[0], micromove_length_xyza[1], micromove_length_xyza[2], micromove_length_xyza[3]);
             //move micromoves
             for (int i=0; i < num_moves; i++) {
-                goal_xyza[0] = goal_xyza[0] + micromove_length_xyz[0];
-                goal_xyza[1] = goal_xyza[1] + micromove_length_xyz[1];
-                goal_xyza[2] = goal_xyza[2] + micromove_length_xyz[2];
+                goal_xyza[0] = goal_xyza[0] + micromove_length_xyza[0];
+                goal_xyza[1] = goal_xyza[1] + micromove_length_xyza[1];
+                goal_xyza[2] = goal_xyza[2] + micromove_length_xyza[2];
+                goal_xyza[3] = goal_xyza[3] + micromove_length_xyza[3];
 
                 calculate_invkin(&goal_xyza[0], &goal_angs[0], &curr_angs[0], &delta_angs[0], &curr_z, &delta_z ,&error);
 
@@ -602,7 +606,6 @@ static void movement_task(void *arg)
                     curr_angs[0] = goal_angs[0];
                     curr_angs[1] = goal_angs[1];
                     curr_angs[2] = goal_angs[2];
-                    curr_angs[3] = goal_angs[3];
                     curr_z = goal_xyza[2];
 
                 } 
@@ -647,7 +650,7 @@ void app_main(void)
     while(1) {
         //uint16_t ang1 = as_read_angle(I2C_MASTER_NUM0, 0x36); //0-4096, middle is 3100, opposite of middle is 1052
         //ESP_LOGI("AS5600", "ANG1: %i", ang1);
-        printf("%i %f %f %f %f %f %f %i\n", homed, goal_xyza[0], goal_xyza[1], goal_xyza[2], curr_angs[0], curr_angs[1], curr_angs[2], busy);
+        //printf("%i %f %f %f %f %f %f %i\n", homed, goal_xyza[0], goal_xyza[1], goal_xyza[2], curr_angs[0], curr_angs[1], curr_angs[2], busy);
 
          //printf(">alarm:%i >stepcount:%i >endaccel_steps:%i\n", (int)curr_alarms[1], (int)step_counts[1], (int)endaccel_steps[1]);
         vTaskDelay(10/portTICK_PERIOD_MS);
