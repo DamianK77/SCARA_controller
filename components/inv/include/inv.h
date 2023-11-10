@@ -4,7 +4,7 @@
 #include "esp_log.h"
 
 #define L1  180
-#define L2  160
+#define L2  157
 #define D1  0
 #define D2  0
 #define RAD2DEG 57.295

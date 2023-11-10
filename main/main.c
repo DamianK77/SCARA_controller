@@ -26,8 +26,8 @@
 #define STEP_IO2         GPIO_NUM_23
 #define DIR_IO2          GPIO_NUM_18
 
-#define MIDANGLE_B       1946
-#define MIDANGLE_OPPOSITE_B 3994    //MIDANGLE_B +- 2048 (must be in range 0-4096)
+#define MIDANGLE_B       1908
+#define MIDANGLE_OPPOSITE_B MIDANGLE_B+2048    //MIDANGLE_B +- 2048 (must be in range 0-4096)
 
 #define I2C_MASTER_SDA_IO0   GPIO_NUM_13
 #define I2C_MASTER_SCL_IO0   GPIO_NUM_15
@@ -381,6 +381,10 @@ void homing(gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle
         //ESP_LOGI("HOMING", "IN LOOP HOMING MOT0");
     }
 
+    curr_angs[0] = 0.0;
+    curr_angs[1] = 90.0;
+    curr_angs[2] = 0.0;
+    curr_z = 0.0;
     homed = 1;
 }
 
@@ -601,7 +605,7 @@ void app_main(void)
     //(TAG, "STARTING PROGRAM SECTION");
 
     //xTaskCreate(rx_task1, "uart_rx_task_1", 1024*2, NULL, configMAX_PRIORITIES-1, NULL);
-    xTaskCreate(movement_task, "movement_task", 4096*2, NULL, configMAX_PRIORITIES, NULL);
+    xTaskCreate(movement_task, "movement_task", 4096*3, NULL, configMAX_PRIORITIES, NULL);
     //servo42c_disable();
 
     while(1) {
