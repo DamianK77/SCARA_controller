@@ -220,9 +220,9 @@ uint16_t AXdeg2val(float deg) {
     return (uint16_t)(512+(deg/0.293));
 }
 
-//1 = 0,111rpm, 1rpm = 6deg/s so 1 = 0.666deg/s
+//1 = 0,098rpm, 1rpm = 6deg/s so 1 = 0.588deg/s
 uint16_t AXdegpersec2val(float degs) {
-    return (uint16_t)(degs/0.666);
+    return (uint16_t)(degs/0.588);
 }
 
 void move_arm_by_ang(const float (delta_angs)[3], float delta_z, float ang_a, float speed, gptimer_handle_t gptimer0, gptimer_handle_t gptimer1, gptimer_handle_t gptimer2) 
